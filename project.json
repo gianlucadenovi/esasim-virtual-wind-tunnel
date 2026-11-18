@@ -14,7 +14,7 @@
         {
             "name": "1 · Wind tunnel",
             "file": "blueprints/1-wind-tunnel.json",
-            "published_version": 2,
+            "published_version": 3,
             "nodes": 7
         }
     ],
