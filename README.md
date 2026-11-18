@@ -129,7 +129,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Wind tunnel](blueprints/1-wind-tunnel.json) · 7 blocks · version 6
+- [1 · Wind tunnel](blueprints/1-wind-tunnel.json) · 7 blocks · version 7
 
 ### Workspace blocks it uses
 
