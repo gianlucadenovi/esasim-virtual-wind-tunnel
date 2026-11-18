@@ -1,0 +1,70 @@
+{
+    "esasim": {
+        "kind": "blueprint",
+        "flow_id": 79
+    },
+    "name": "1 · Wind tunnel",
+    "description": "Upload car models, run them through the GPU wind tunnel, compare drag and see the flow in 3D.",
+    "published_version": 1,
+    "updated": "2026-11-18 03:02:59",
+    "graph": {
+        "nodes": [
+            {
+                "id": "tunnel",
+                "type": "ws-wind-tunnel-gpu-cfd",
+                "x": 40,
+                "y": 40,
+                "params": {
+                    "samples": "ahmed25, suv",
+                    "resolution": "64 (quick)",
+                    "flow_time": 6
+                },
+                "title": "Wind tunnel"
+            },
+            {
+                "id": "table",
+                "type": "table-view",
+                "x": 380,
+                "y": 40,
+                "params": [],
+                "title": "Results"
+            },
+            {
+                "id": "report",
+                "type": "text-view",
+                "x": 380,
+                "y": 300,
+                "params": [],
+                "title": "Report"
+            }
+        ],
+        "edges": [
+            {
+                "id": "tunnel.results>table.data",
+                "from": {
+                    "node": "tunnel",
+                    "port": "results"
+                },
+                "to": {
+                    "node": "table",
+                    "port": "data"
+                }
+            },
+            {
+                "id": "tunnel.report>report.text",
+                "from": {
+                    "node": "tunnel",
+                    "port": "report"
+                },
+                "to": {
+                    "node": "report",
+                    "port": "text"
+                }
+            }
+        ],
+        "notes": [],
+        "dash": {
+            "items": []
+        }
+    }
+}

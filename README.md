@@ -30,6 +30,10 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-None yet.
+- [1 · Wind tunnel](blueprints/1-wind-tunnel.json) · 3 blocks · version 1
+
+### Workspace blocks it uses
+
+- [Wind tunnel (GPU CFD)](blocks/ws-wind-tunnel-gpu-cfd) · version 1
 
 Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.
