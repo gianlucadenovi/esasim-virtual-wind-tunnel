@@ -28,7 +28,16 @@
             "sha256": "6acab1c693ca41f5e78060e8182fd416bea44c1702401996b4f5ea74f91271ca",
             "zip": "assets/virtual-wind-tunnel/car-models/2020_lamborghini_aventador_svj_63_roadster.glb",
             "in": "repo"
+        },
+        {
+            "path": "virtual-wind-tunnel/car-models/2026_ferrari_sf-26.glb",
+            "size": 31244532,
+            "sha256": "d953052effcd19484a563ce7823c1ecf70f0753a7575d2027ef4063846a4b751",
+            "zip": "assets/virtual-wind-tunnel/car-models/2026_ferrari_sf-26.glb",
+            "in": "release",
+            "tag": "esasim-files",
+            "asset": "asset--virtual-wind-tunnel--car-models--2026_ferrari_sf-26.glb"
         }
     ],
-    "saved": "2026-11-18T22:09:24+00:00"
+    "saved": "2026-11-18T22:10:24+00:00"
 }
