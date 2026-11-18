@@ -1,0 +1,53 @@
+{
+    "id": "ws-wind-tunnel-view",
+    "version": "1",
+    "name": "Wind tunnel view",
+    "category": "Visualizers",
+    "icon": "wind",
+    "side": "frontend",
+    "customizable": true,
+    "summary": "The wind tunnel in 3D: each car with its surface pressure, streamlines, moving particles and flow slices; pick a model, change the wind speed, compare drag; the flow forms live while the tunnel runs.",
+    "help": "Wire the Wind tunnel block's Tunnel results into Tunnel and its Live telemetry into Live. Pick a model in the bar (or click a row of the table), colour the car by pressure (Cp) or paint, show streamlines and particles riding them, a centre or horizontal slice of the flow (speed or pressure), and move the Wind slider to see drag force and power at that speed (same Cd). Run tunnel starts a new run with the chosen resolution and wind speed (the Wind tunnel node's id is set in Tunnel node). Drag to orbit, right-drag or shift-drag to pan, scroll to zoom. While a run goes on, the side panel shows the centre-plane flow forming around the car and the running Cd.",
+    "inputs": [
+        {
+            "id": "tunnel",
+            "label": "Tunnel results",
+            "type": "files",
+            "many": true,
+            "formats": [
+                "gz",
+                "json"
+            ],
+            "help": "<model>.tunnel.json.gz from the Wind tunnel block"
+        },
+        {
+            "id": "live",
+            "label": "Live",
+            "type": "stream",
+            "many": true,
+            "optional": true,
+            "help": "The Wind tunnel block's live telemetry (channel tunnel)"
+        }
+    ],
+    "outputs": [],
+    "params": [
+        {
+            "key": "tunnel_node",
+            "label": "Tunnel node",
+            "type": "text",
+            "default": "tunnel",
+            "help": "The node id of the Wind tunnel block that Run tunnel sets the resolution and speed of"
+        }
+    ],
+    "view": {
+        "w": 6,
+        "h": 7,
+        "resize": "both"
+    },
+    "permissions": [
+        "run"
+    ],
+    "esasim": {
+        "version": 1
+    }
+}

@@ -6,39 +6,130 @@
     "name": "1 · Wind tunnel",
     "description": "Upload car models, run them through the GPU wind tunnel, compare drag and see the flow in 3D.",
     "published_version": 1,
-    "updated": "2026-11-18 03:02:59",
+    "updated": "2026-11-18 03:06:01",
     "graph": {
         "nodes": [
             {
+                "id": "cars",
+                "type": "dataset",
+                "x": -420,
+                "y": 160,
+                "params": {
+                    "dataset": "20",
+                    "version": "latest",
+                    "pattern": "*.stl, *.STL, *.obj, *.OBJ, *.glb, *.gltf, *.ply, *.off"
+                },
+                "title": "Car models (upload your STL/OBJ/GLB here)"
+            },
+            {
                 "id": "tunnel",
                 "type": "ws-wind-tunnel-gpu-cfd",
-                "x": 40,
+                "x": 0,
+                "y": 160,
+                "params": {
+                    "samples": "auto",
+                    "resolution": "96 (standard)",
+                    "speed_kmh": 120,
+                    "flow_time": 8
+                },
+                "title": "Wind tunnel (GPU CFD)"
+            },
+            {
+                "id": "tel",
+                "type": "telemetry",
+                "x": 380,
+                "y": -40,
+                "params": {
+                    "interval": 1,
+                    "channels": "tunnel",
+                    "keep": 4
+                },
+                "title": "Live flow"
+            },
+            {
+                "id": "view",
+                "type": "ws-wind-tunnel-view",
+                "x": 800,
                 "y": 40,
                 "params": {
-                    "samples": "ahmed25, suv",
-                    "resolution": "64 (quick)",
-                    "flow_time": 6
+                    "tunnel_node": "tunnel"
                 },
                 "title": "Wind tunnel"
             },
             {
                 "id": "table",
                 "type": "table-view",
-                "x": 380,
-                "y": 40,
+                "x": 800,
+                "y": 300,
                 "params": [],
                 "title": "Results"
             },
             {
+                "id": "conv",
+                "type": "chart",
+                "x": 800,
+                "y": 460,
+                "params": {
+                    "kind": "lines",
+                    "x": "t",
+                    "y": "cd"
+                },
+                "title": "Drag coefficient over time"
+            },
+            {
                 "id": "report",
                 "type": "text-view",
-                "x": 380,
-                "y": 300,
+                "x": 800,
+                "y": 620,
                 "params": [],
                 "title": "Report"
             }
         ],
         "edges": [
+            {
+                "id": "cars.files>tunnel.models",
+                "from": {
+                    "node": "cars",
+                    "port": "files"
+                },
+                "to": {
+                    "node": "tunnel",
+                    "port": "models"
+                }
+            },
+            {
+                "id": "tunnel.telemetry>tel.from",
+                "from": {
+                    "node": "tunnel",
+                    "port": "telemetry"
+                },
+                "to": {
+                    "node": "tel",
+                    "port": "from"
+                }
+            },
+            {
+                "id": "tel.stream>view.live",
+                "from": {
+                    "node": "tel",
+                    "port": "stream"
+                },
+                "to": {
+                    "node": "view",
+                    "port": "live"
+                }
+            },
+            {
+                "id": "tunnel.tunnel>view.tunnel",
+                "from": {
+                    "node": "tunnel",
+                    "port": "tunnel"
+                },
+                "to": {
+                    "node": "view",
+                    "port": "tunnel"
+                }
+            },
             {
                 "id": "tunnel.results>table.data",
                 "from": {
@@ -47,6 +138,17 @@
                 },
                 "to": {
                     "node": "table",
+                    "port": "data"
+                }
+            },
+            {
+                "id": "tunnel.history>conv.data",
+                "from": {
+                    "node": "tunnel",
+                    "port": "history"
+                },
+                "to": {
+                    "node": "conv",
                     "port": "data"
                 }
             },

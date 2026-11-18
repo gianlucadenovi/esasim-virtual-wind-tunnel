@@ -15,7 +15,7 @@
             "name": "1 · Wind tunnel",
             "file": "blueprints/1-wind-tunnel.json",
             "published_version": 1,
-            "nodes": 3
+            "nodes": 7
         }
     ],
     "blocks": [
@@ -23,6 +23,11 @@
             "id": "ws-wind-tunnel-gpu-cfd",
             "version": 1,
             "name": "Wind tunnel (GPU CFD)"
+        },
+        {
+            "id": "ws-wind-tunnel-view",
+            "version": 1,
+            "name": "Wind tunnel view"
         }
     ]
 }
