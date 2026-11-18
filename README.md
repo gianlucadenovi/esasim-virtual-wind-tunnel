@@ -141,5 +141,6 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 The files the project's views draw with (3D models, textures, sounds), in [assets/](assets/); the large ones are files of the release `esasim-files`:
 
 - `virtual-wind-tunnel/car-models/1985_delorean_dmc-12_time_machine_bttf.glb` (release file asset--virtual-wind-tunnel--car-models--1985_delorean_dmc-12_time_machine_bttf.glb) · 28 MB
+- [virtual-wind-tunnel/car-models/2019_bmw_x7_xdrive40i.glb](assets/virtual-wind-tunnel/car-models/2019_bmw_x7_xdrive40i.glb) · 11 MB
 
 Keys pasted in blocks (secret settings) are not saved here, nor are the team and the results of runs.

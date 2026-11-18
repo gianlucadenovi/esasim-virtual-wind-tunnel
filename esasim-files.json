@@ -14,7 +14,14 @@
             "in": "release",
             "tag": "esasim-files",
             "asset": "asset--virtual-wind-tunnel--car-models--1985_delorean_dmc-12_time_machine_bttf.glb"
+        },
+        {
+            "path": "virtual-wind-tunnel/car-models/2019_bmw_x7_xdrive40i.glb",
+            "size": 11576924,
+            "sha256": "08e0fbbb7a131b7e05c7aa335aec9c7ac7174af780506285150fd5c09d396c66",
+            "zip": "assets/virtual-wind-tunnel/car-models/2019_bmw_x7_xdrive40i.glb",
+            "in": "repo"
         }
     ],
-    "saved": "2026-11-18T22:08:28+00:00"
+    "saved": "2026-11-18T22:08:51+00:00"
 }
