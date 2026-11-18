@@ -129,13 +129,11 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Wind tunnel](blueprints/1-wind-tunnel.json) · 7 blocks · version 7
+- [1 · Wind tunnel](blueprints/1-wind-tunnel.json) · 7 blocks · version 8
 
 ### Workspace blocks it uses
 
 - [Wind tunnel (GPU CFD)](blocks/ws-wind-tunnel-gpu-cfd) · version 6
 - [Wind tunnel view](blocks/ws-wind-tunnel-view) · version 7
 
-The data the blueprints read (Car models) stays in EsaSim.
-
-Keys pasted in blocks (secret settings) are not saved here, nor are the team and the results of runs.
+Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.
