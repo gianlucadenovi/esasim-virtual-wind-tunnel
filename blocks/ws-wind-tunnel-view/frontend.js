@@ -1,6 +1,6 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Wind tunnel view (ws-wind-tunnel-view) · version 4 · view, JavaScript: function render(ctx)
-// The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, and realistic smoke from a wand you move in real time through the computed flow; drag compared across models.
+// Wind tunnel view (ws-wind-tunnel-view) · version 5 · view, JavaScript: function render(ctx)
+// The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, on a moving asphalt road with spinning wheels; realistic smoke from a wand and flow slices you move in real time;
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-18
 //
@@ -12,9 +12,10 @@
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
-/* Wind tunnel view (v4): the cars of a Wind tunnel run in a 3D wind tunnel. A smoke wand you move in real time sends
- * smoke through the computed flow (interpolated from the simulation's mean velocity, spread by its turbulence).
- * Each car shows its own materials (GLB/glTF), its surface pressure, or a neutral paint, at the press of a button.
+/* Wind tunnel view (v5): the cars of a Wind tunnel run in a wind gallery: a moving asphalt road, spinning wheels,
+ * a smoke wand you move in real time through the computed flow (interpolated from the simulation's mean velocity,
+ * spread by its turbulence) and flow slices sampled live from the same field. Each car shows its own materials
+ * (GLB/glTF), its surface pressure, or a neutral paint, at the press of a button.
  * Inputs: tunnel (*.tunnel.json.gz, *.field.bin.gz and the original *.source.glb of each car) and live (telemetry). */
 function render(ctx) {
   var THREE = ctx.THREE, A = THREE.addons || {}, el = ctx.el, P = ctx.params || {};
@@ -73,8 +74,8 @@ function render(ctx) {
     '<div class="bar">' +
     '<div class="chip"><span class="lab">Model</span><select data-k="model"></select></div>' +
     '<div class="chip"><span class="lab">Car</span><button data-k="mOrig">Original</button><button data-k="mCp">Pressure</button><button data-k="mPaint">Paint</button></div>' +
-    '<div class="chip"><button data-k="smoke" class="on">Smoke</button><button data-k="lines">Streamlines</button></div>' +
-    '<div class="chip"><span class="lab">Slice</span><select data-k="slice"><option value="off">off</option><option value="xz">centre</option><option value="xy">horizontal</option></select><select data-k="field"><option value="speed">speed</option><option value="cp">pressure</option></select></div>' +
+    '<div class="chip"><button data-k="smoke" class="on">Smoke</button><button data-k="lines">Streamlines</button><button data-k="road" class="on">Rolling road</button></div>' +
+    '<div class="chip"><span class="lab">Slice</span><select data-k="slice"><option value="off">off</option><option value="xz">side</option><option value="xy">top</option><option value="yz">cross</option></select><select data-k="field"><option value="speed">speed</option><option value="cp">pressure</option><option value="turb">turbulence</option></select><input type="range" data-k="spos" min="0" max="1000" step="1" title="Move the slice"><b data-k="sposv" style="min-width:58px;text-align:right"></b></div>' +
     '<div class="chip"><span class="lab">Wind</span><input type="range" data-k="wind" min="20" max="350" step="5"><b data-k="windv"></b></div>' +
     '<div class="chip" data-k="runchip"><button class="go" data-k="run">▶ Run tunnel</button><select data-k="res"><option>64 (quick)</option><option>96 (standard)</option><option selected>128 (fine)</option><option>160 (very fine)</option></select></div>' +
     '</div>' +
@@ -123,12 +124,14 @@ function render(ctx) {
     docs: {}, order: [], cur: S.cur || null, mode: S.mode || 'original', smoke: S.smoke !== false, lines: !!S.lines,
     slice: S.slice || 'off', field: S.field || 'speed', wind: S.wind || 120, res: S.res || '128 (fine)',
     jets: S.jets || 5, rake: S.rake || 'v', wz: S.wz != null ? S.wz : 0.24, wy: S.wy != null ? S.wy : 0.5, sp: S.sp || 130,
-    wx: S.wx != null ? S.wx : 0.4, dens: S.dens || 100, slow: S.slow || 12, scol: S.scol || 'yellow'
+    wx: S.wx != null ? S.wx : 0.4, dens: S.dens || 100, slow: S.slow || 12, scol: S.scol || 'yellow',
+    road: S.road !== false, spos: S.spos || {}
   };
   function save() {
     if (!ctx.saveState) return;
     ctx.saveState({ cur: st.cur, mode: st.mode, smoke: st.smoke, lines: st.lines, slice: st.slice, field: st.field, wind: st.wind, res: st.res,
-      jets: st.jets, rake: st.rake, wz: st.wz, wy: st.wy, sp: st.sp, wx: st.wx, dens: st.dens, slow: st.slow, scol: st.scol });
+      jets: st.jets, rake: st.rake, wz: st.wz, wy: st.wy, sp: st.sp, wx: st.wx, dens: st.dens, slow: st.slow, scol: st.scol,
+      road: st.road, spos: st.spos });
   }
 
   // ---------------------------------------------------------------- renderer, tunnel room, lights
@@ -157,37 +160,57 @@ function render(ctx) {
   }
   function noise(g, w, h, a) { var d = g.getImageData(0, 0, w, h); for (var i = 0; i < d.data.length; i += 4) { var n = (Math.random() - 0.5) * a; d.data[i] += n; d.data[i + 1] += n; d.data[i + 2] += n; } g.putImageData(d, 0, 0); }
   var room = new THREE.Group(); scene.add(room);
-  var floorTex = canvasTex(512, 512, function (g, w, h) {
-    g.fillStyle = '#5d6066'; g.fillRect(0, 0, w, h); noise(g, w, h, 14);
-    g.strokeStyle = 'rgba(40,42,46,.55)'; g.lineWidth = 3; g.strokeRect(0, 0, w, h);
+  // asphalt: aggregate speckles on a dark binder, used as colour and as bump map
+  var asphaltTex = canvasTex(1024, 1024, function (g, w, h) {
+    g.fillStyle = '#323337'; g.fillRect(0, 0, w, h);
+    var d = g.getImageData(0, 0, w, h), px = d.data;
+    for (var i = 0; i < px.length; i += 4) { var n = (Math.random() - 0.5) * 34; px[i] += n; px[i + 1] += n; px[i + 2] += n * 1.05; }
+    g.putImageData(d, 0, 0);
+    for (var k = 0; k < 26000; k++) {
+      var x = Math.random() * w, y = Math.random() * h, r = Math.random() * 1.9 + 0.4, c = Math.random();
+      g.fillStyle = c < 0.55 ? 'rgba(150,150,152,' + (0.25 + Math.random() * 0.45) + ')' : c < 0.85 ? 'rgba(18,18,20,.7)' : 'rgba(110,100,92,.5)';
+      g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
+    }
+    for (var m = 0; m < 14; m++) {
+      g.fillStyle = 'rgba(0,0,0,' + (0.04 + Math.random() * 0.05) + ')';
+      g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 60 + Math.random() * 200, 20 + Math.random() * 90, Math.random() * 3, 0, 6.2832); g.fill();
+    }
   }, [1, 1]);
-  var beltTex = canvasTex(256, 256, function (g, w, h) {
-    g.fillStyle = '#3a3d42'; g.fillRect(0, 0, w, h); noise(g, w, h, 26);
-    g.fillStyle = 'rgba(255,255,255,.05)'; for (var i = 0; i < 8; i++) g.fillRect(i * 32, 0, 2, h);
-  }, [1, 1]);
+  var laneTex = canvasTex(512, 16, function (g, w, h) { g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(240,240,232,.92)'; g.fillRect(0, 2, w * 0.4, h - 4); }, [1, 1]);
+  var edgeTex = canvasTex(64, 16, function (g, w, h) { g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(240,240,232,.9)'; g.fillRect(0, 2, w, h - 4); }, [1, 1]);
   var wallTex = canvasTex(512, 512, function (g, w, h) {
-    g.fillStyle = '#2b2e33'; g.fillRect(0, 0, w, h); noise(g, w, h, 10);
-    g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 4;
+    g.fillStyle = '#26292e'; g.fillRect(0, 0, w, h); noise(g, w, h, 10);
+    g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 4;
     for (var x = 0; x <= w; x += 128) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
     for (var y = 0; y <= h; y += 256) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,.035)'; for (var q = 0; q < 6; q++) g.fillRect(20 + q * 80, 40, 30, 8);
   }, [1, 1]);
-  var belt = null;
+  var roadTiles = 4.0, scrolls = [];
   function buildRoom(L, H) {
     while (room.children.length) { var o = room.children.pop(); if (o.geometry) o.geometry.dispose(); }
-    var X0 = -2.6 * L, X1 = 4.2 * L, Y = 1.9 * L, Z = Math.max(1.3 * L, 4 * H);
-    var fl = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 2 * Y), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85, metalness: 0 }));
-    floorTex.repeat.set((X1 - X0) / 2.5, 2 * Y / 2.5);
-    fl.position.set((X0 + X1) / 2, 0, -0.003); fl.receiveShadow = true; room.add(fl);
-    belt = new THREE.Mesh(new THREE.PlaneGeometry(2.4 * L, 0.55 * L), new THREE.MeshStandardMaterial({ map: beltTex, roughness: 0.95, metalness: 0 }));
-    beltTex.repeat.set(2.4 * L / 1.2, 0.55 * L / 1.2);
-    belt.position.set(0.5 * L, 0, -0.001); belt.receiveShadow = true; room.add(belt);
+    scrolls = [];
+    var X0 = -2.6 * L, X1 = 4.2 * L, Y = Math.max(1.9 * L, 7), Z = Math.max(1.3 * L, 4 * H);
+    // the road under the car moves at the wind speed (a rolling road): the car seems to drive
+    var road = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 2 * Y), new THREE.MeshStandardMaterial({ map: asphaltTex, bumpMap: asphaltTex, bumpScale: 0.6, roughness: 0.93, metalness: 0 }));
+    asphaltTex.repeat.set((X1 - X0) / roadTiles, 2 * Y / roadTiles);
+    road.position.set((X0 + X1) / 2, 0, -0.004); road.receiveShadow = true; room.add(road);
+    scrolls.push({ tex: asphaltTex, period: roadTiles });
+    // lane markings: dashed lines between the lanes, solid lines at the edges
+    var lane = 3.6, lm = new THREE.MeshStandardMaterial({ map: laneTex, transparent: true, roughness: 0.7, depthWrite: false });
+    laneTex.repeat.set((X1 - X0) / 12, 1);
+    var em = new THREE.MeshStandardMaterial({ map: edgeTex, transparent: true, roughness: 0.7, depthWrite: false });
+    [-1, 1].forEach(function (sg) {
+      var dl = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 0.14), lm); dl.position.set((X0 + X1) / 2, sg * lane / 2, -0.002); dl.receiveShadow = true; room.add(dl);
+      var el2 = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 0.18), em); el2.position.set((X0 + X1) / 2, sg * lane * 1.5, -0.002); el2.receiveShadow = true; room.add(el2);
+    });
+    scrolls.push({ tex: laneTex, period: 12 });
     var wm = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9, metalness: 0.05, side: THREE.BackSide });
     wallTex.repeat.set((X1 - X0) / 3, Z / 3);
     var box = new THREE.Mesh(new THREE.BoxGeometry(X1 - X0, 2 * Y, Z * 2), wm);
     box.position.set((X0 + X1) / 2, 0, 0); room.add(box);
     var ceil = new THREE.MeshBasicMaterial({ color: 0xf3f6ff });
-    for (var i = 0; i < 4; i++) { var lt = new THREE.Mesh(new THREE.PlaneGeometry(0.06 * L, 1.6 * L), ceil); lt.position.set(-0.6 * L + i * 0.75 * L, 0, Z - 0.01); lt.rotation.x = Math.PI; room.add(lt); }
-    var hc = canvasTex(256, 256, function (g, w, h) { g.fillStyle = '#1a1c20'; g.fillRect(0, 0, w, h); g.strokeStyle = '#33373d'; g.lineWidth = 3; for (var x = 0; x < w; x += 16) for (var y = 0; y < h; y += 16) g.strokeRect(x, y, 16, 16); }, [8, 4]);
+    for (var i = 0; i < 5; i++) for (var s2 = -1; s2 <= 1; s2 += 2) { var lt = new THREE.Mesh(new THREE.PlaneGeometry(0.05 * L, 1.8 * L), ceil); lt.position.set(-0.8 * L + i * 0.75 * L, s2 * 0.9 * L, Z - 0.01); lt.rotation.x = Math.PI; room.add(lt); }
+    var hc = canvasTex(256, 256, function (g, w, h) { g.fillStyle = '#1a1c20'; g.fillRect(0, 0, w, h); g.strokeStyle = '#3a3e45'; g.lineWidth = 3; for (var x = 0; x < w; x += 16) for (var y = 0; y < h; y += 16) g.strokeRect(x, y, 16, 16); }, [8, 4]);
     var inlet = new THREE.Mesh(new THREE.PlaneGeometry(2 * Y * 0.9, Z * 0.9), new THREE.MeshStandardMaterial({ map: hc, roughness: 0.8 }));
     inlet.rotation.y = Math.PI / 2; inlet.rotation.z = Math.PI / 2; inlet.position.set(X0 + 0.02, 0, Z * 0.45); room.add(inlet);
     key.position.set(0.2 * L, -1.2 * L, 2.4 * L); key.target.position.set(0.5 * L, 0, 0);
@@ -229,7 +252,7 @@ function render(ctx) {
   }
   function busy(t) { $('busy').style.display = t ? 'block' : 'none'; $('busy').textContent = t || ''; }
 
-  // ---------------------------------------------------------------- the flow field (for smoke and pressure)
+  // ---------------------------------------------------------------- the flow field (for smoke, slices and pressure)
   function loadField(doc) {
     if (doc._field) return Promise.resolve(doc._field);
     var F = doc.field, f = F && fileByName(F.file);
@@ -308,7 +331,7 @@ function render(ctx) {
     var g = new THREE.Group(), v = new THREE.Vector3(), n = new THREE.Vector3();
     holder.updateMatrixWorld(true);
     holder.traverse(function (q) {
-      if (!q.isMesh || !q.geometry || !q.geometry.attributes.position) return;
+      if (!q.isMesh || !q.geometry || !q.geometry.attributes.position || q.userData.wheel) return;
       var mt = Array.isArray(q.material) ? q.material[0] : q.material;
       if (mt && (mt.transparent || mt.alphaTest > 0)) return; // decals and glass overlays: leave out
       var geo = q.geometry.clone(), pos = geo.attributes.position;
@@ -337,6 +360,90 @@ function render(ctx) {
     var m = new THREE.Mesh(g, cpMat); m.castShadow = true; m.receiveShadow = true; m.userData.own = true;
     var grp = new THREE.Group(); grp.add(m); return grp;
   }
+  // ---- wheels: found where the tyres touch the road; the triangles inside each tyre's cylinder are split off into
+  // their own meshes, which spin about the axle with the rolling road (works without named parts)
+  function detectWheels(root, L) {
+    var pts = [], v = new THREE.Vector3();
+    root.updateMatrixWorld(true);
+    root.traverse(function (q) {
+      if (!q.isMesh || !q.geometry || !q.geometry.attributes.position) return;
+      var p = q.geometry.attributes.position, step = Math.max(1, Math.floor(p.count / 30000));
+      for (var i = 0; i < p.count; i += step) { v.fromBufferAttribute(p, i).applyMatrix4(q.matrixWorld); pts.push(v.x, v.y, v.z); }
+    });
+    var n = pts.length / 3, contact = [], i;
+    for (i = 0; i < n; i++) if (pts[i * 3 + 2] < 0.006 * L) contact.push(i);
+    if (contact.length < 8) return [];
+    var xs = contact.map(function (k) { return pts[k * 3]; }).sort(function (a, b) { return a - b; });
+    var gap = 0, cut = 0;
+    for (i = 1; i < xs.length; i++) if (xs[i] - xs[i - 1] > gap) { gap = xs[i] - xs[i - 1]; cut = (xs[i] + xs[i - 1]) / 2; }
+    if (gap < 0.25 * L) return [];
+    var wheels = [];
+    [[-Infinity, cut], [cut, Infinity]].forEach(function (rx) {
+      [-1, 1].forEach(function (side) {
+        var c = contact.filter(function (k) { var x = pts[k * 3], y = pts[k * 3 + 1]; return x > rx[0] && x < rx[1] && y * side > 0; });
+        if (c.length < 2) return;
+        var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        c.forEach(function (k) { x0 = Math.min(x0, pts[k * 3]); x1 = Math.max(x1, pts[k * 3]); y0 = Math.min(y0, pts[k * 3 + 1]); y1 = Math.max(y1, pts[k * 3 + 1]); });
+        var xc = (x0 + x1) / 2, yc = (y0 + y1) / 2, hw = Math.max(0.5 * (y1 - y0) * 1.3, 0.02 * L), rs = [];
+        // the radius from the tyre's chord at a few heights: r = (c^2 + h^2) / 2h; the smallest is the least disturbed
+        [0.015, 0.025, 0.035, 0.045].forEach(function (hf) {
+          var hgt = hf * L, cmax = 0;
+          for (var k = 0; k < n; k++) {
+            var dz = pts[k * 3 + 2] - hgt, dx = Math.abs(pts[k * 3] - xc);
+            if (Math.abs(dz) < 0.003 * L && Math.abs(pts[k * 3 + 1] - yc) < hw && dx < 0.09 * L && dx > cmax) cmax = dx;
+          }
+          if (cmax > 0) rs.push((cmax * cmax + hgt * hgt) / (2 * hgt));
+        });
+        if (!rs.length) return;
+        var r = Math.max(0.03 * L, Math.min(0.12 * L, Math.min.apply(null, rs)));
+        wheels.push({ x: xc, y: yc, r: r, hw: hw, angle: 0 });
+      });
+    });
+    return wheels.length >= 2 ? wheels : [];
+  }
+  function splitWheels(root, wheels, target) {
+    var out = [], v = new THREE.Vector3();
+    if (!wheels.length) return out;
+    root.updateMatrixWorld(true);
+    var meshes = [];
+    root.traverse(function (q) { if (q.isMesh && q.geometry && q.geometry.attributes.position && !Array.isArray(q.material) && !q.userData.wheel) meshes.push(q); });
+    meshes.forEach(function (q) {
+      var geo = q.geometry, p = geo.attributes.position, idx = geo.index ? geo.index.array : null, nt = (idx ? idx.length : p.count) / 3;
+      var wIn = new Int8Array(p.count);
+      for (var i = 0; i < p.count; i++) {
+        v.fromBufferAttribute(p, i).applyMatrix4(q.matrixWorld); wIn[i] = -1;
+        for (var w = 0; w < wheels.length; w++) {
+          var W2 = wheels[w], dx = v.x - W2.x, dz = v.z - W2.r;
+          if (Math.abs(v.y - W2.y) < W2.hw * 1.25 && dx * dx + dz * dz < W2.r * W2.r * 1.1) { wIn[i] = w; break; }
+        }
+      }
+      var body = [], per = wheels.map(function () { return []; }), any = false;
+      for (var t = 0; t < nt; t++) {
+        var a = idx ? idx[t * 3] : t * 3, b = idx ? idx[t * 3 + 1] : t * 3 + 1, c = idx ? idx[t * 3 + 2] : t * 3 + 2;
+        if (wIn[a] >= 0 && wIn[a] === wIn[b] && wIn[a] === wIn[c]) { per[wIn[a]].push(a, b, c); any = true; } else body.push(a, b, c);
+      }
+      if (!any) return;
+      var IA = p.count > 65535 ? Uint32Array : Uint16Array;
+      var g2 = geo.clone(); g2.setIndex(new THREE.BufferAttribute(new IA(body), 1)); g2.clearGroups(); q.geometry = g2; q.userData.own = true;
+      per.forEach(function (tris, w) {
+        if (!tris.length) return;
+        var gw = geo.clone(); gw.setIndex(new THREE.BufferAttribute(new IA(tris), 1)); gw.clearGroups();
+        var m = new THREE.Mesh(gw, q.material); m.castShadow = true; m.receiveShadow = true;
+        m.matrixAutoUpdate = false; m.userData = { wheel: true, own: true, base: q.matrixWorld.clone(), w: w };
+        m.matrix.copy(q.matrixWorld); target.add(m); out.push(m);
+      });
+    });
+    return out;
+  }
+  var spinM = new THREE.Matrix4(), tA = new THREE.Matrix4(), tB = new THREE.Matrix4();
+  function spinWheels(list, wheels) {
+    list.forEach(function (m) {
+      var W2 = wheels[m.userData.w];
+      tA.makeTranslation(W2.x, 0, W2.r); spinM.makeRotationY(W2.angle); tB.makeTranslation(-W2.x, 0, -W2.r);
+      m.matrix.copy(tA).multiply(spinM).multiply(tB).multiply(m.userData.base); m.matrixWorldNeedsUpdate = true;
+    });
+  }
+
   function showMode() {
     if (!car) return;
     var hasOrig = !!car.original;
@@ -345,13 +452,16 @@ function render(ctx) {
     if (car.original) car.original.visible = mode === 'original';
     car.cpObj.visible = mode !== 'original';
     car.cpObj.traverse(function (q) { if (q.isMesh) q.material = mode === 'paint' ? paintMat : cpMat; });
+    car.origWheels.forEach(function (m) { m.visible = mode === 'original'; });
+    car.cpWheels.forEach(function (m) { m.visible = mode !== 'original'; m.material = mode === 'paint' ? paintMat : cpMat; });
     ['mOrig', 'mCp', 'mPaint'].forEach(function (k, i) { $(k).classList.toggle('on', mode === ['original', 'pressure', 'paint'][i]); });
     legend();
   }
 
-  // ---------------------------------------------------------------- streamlines and slices (from the run's files)
+  // ---------------------------------------------------------------- streamlines (from the run) and live slices
   var extras = new THREE.Group(); scene.add(extras);
-  var lineObj = null, slices = {};
+  var extrasLive = new THREE.Group(); scene.add(extrasLive);
+  var lineObj = null;
   function buildExtras(doc) {
     while (extras.children.length) { var o = extras.children.pop(); if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }
     var so = b64(doc.streamlines.offsets, Int32Array), sp = b64(doc.streamlines.p, Float32Array), ss = b64(doc.streamlines.s, Float32Array);
@@ -364,36 +474,63 @@ function render(ctx) {
     var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(lp, 3)); lg.setAttribute('color', new THREE.BufferAttribute(linearize(lc), 3));
     lineObj = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6 }));
     extras.add(lineObj);
-    slices = {};
-    ['xz', 'xy'].forEach(function (key) {
-      var s = doc.slices[key], data = new Uint8Array(s.w * s.h * 4);
-      var tex = new THREE.DataTexture(data, s.w, s.h, THREE.RGBAFormat); tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
-      if ('colorSpace' in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
-      var w = s.w * s.dx, h = s.h * s.dx;
-      var m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.85, toneMapped: false }));
-      if (key === 'xz') { m.rotation.x = Math.PI / 2; m.position.set(s.x0 - s.dx / 2 + w / 2, 0, s.z0 - s.dx / 2 + h / 2); }
-      else m.position.set(s.x0 - s.dx / 2 + w / 2, s.y0 - s.dx / 2 + h / 2, s.z);
-      extras.add(m);
-      slices[key] = { mesh: m, tex: tex, data: data, raw: { speed: b64(s.speed, Uint8Array), cp: b64(s.cp, Uint8Array) }, n: s.w * s.h };
-    });
-    paintSlices(); showExtras();
-  }
-  function paintSlices() {
-    Object.keys(slices).forEach(function (k) {
-      var o = slices[k], r = o.raw[st.field], d = o.data, c = [0, 0, 0];
-      for (var i = 0; i < o.n; i++) { var v = r[i]; if (v === 0) { d[i * 4 + 3] = 0; continue; } cmap((v - 1) / 254, c, 0); d[i * 4] = c[0] * 255; d[i * 4 + 1] = c[1] * 255; d[i * 4 + 2] = c[2] * 255; d[i * 4 + 3] = 230; }
-      o.tex.needsUpdate = true;
-    });
+    showExtras();
   }
   function showExtras() {
     if (lineObj) lineObj.visible = st.lines;
-    if (slices.xz) slices.xz.mesh.visible = st.slice === 'xz';
-    if (slices.xy) slices.xy.mesh.visible = st.slice === 'xy';
+    drawSlice();
     legend();
+  }
+  // a slice through the flow, sampled from the 3D field in the browser: side (x-z), top (x-y) or cross (y-z),
+  // moved along its normal with the slider
+  var sliceObj = null, sliceTex = null, sliceData = null, sliceW = 0, sliceH = 0, smpS = [0, 0, 0, 0, 0];
+  function sliceRange(F, ax) { var n = ax === 0 ? F.nx : ax === 1 ? F.ny : F.nz, o = ax === 0 ? F.x0 : ax === 1 ? F.y0 : F.z0; return [o, o + (n - 1) * F.h]; }
+  function drawSlice() {
+    var d = st.docs[st.cur], F = d && d._field;
+    $('spos').style.display = $('sposv').style.display = st.slice === 'off' ? 'none' : '';
+    if (!F || st.slice === 'off') { if (sliceObj) sliceObj.visible = false; return; }
+    var nAx = st.slice === 'xz' ? 1 : st.slice === 'xy' ? 2 : 0;
+    var uAx = st.slice === 'yz' ? 1 : 0, vAx = st.slice === 'xy' ? 1 : 2;
+    var rn = sliceRange(F, nAx), ru = sliceRange(F, uAx), rv = sliceRange(F, vAx);
+    var def = nAx === 1 ? 0.5 : nAx === 2 ? Math.min(0.9, Math.max(0.02, (0.4 * d.H - rn[0]) / (rn[1] - rn[0]))) : Math.max(0, Math.min(1, (0.8 * d.L - rn[0]) / (rn[1] - rn[0])));
+    var t = st.spos[st.slice] != null ? st.spos[st.slice] : def;
+    $('spos').value = Math.round(t * 1000);
+    var c = rn[0] + t * (rn[1] - rn[0]);
+    $('sposv').textContent = 'xyz'[nAx] + ' ' + fmt(c, 2) + ' m';
+    var res = F.h / 2, w = Math.min(720, Math.round((ru[1] - ru[0]) / res)), h = Math.min(400, Math.round((rv[1] - rv[0]) / res));
+    if (!sliceObj || w !== sliceW || h !== sliceH) {
+      if (sliceObj) { extrasLive.remove(sliceObj); sliceObj.geometry.dispose(); sliceObj.material.dispose(); sliceTex.dispose(); }
+      sliceW = w; sliceH = h; sliceData = new Uint8Array(w * h * 4);
+      sliceTex = new THREE.DataTexture(sliceData, w, h, THREE.RGBAFormat); sliceTex.magFilter = THREE.LinearFilter; sliceTex.minFilter = THREE.LinearFilter;
+      if ('colorSpace' in sliceTex && THREE.SRGBColorSpace) sliceTex.colorSpace = THREE.SRGBColorSpace;
+      sliceObj = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: sliceTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.88, toneMapped: false }));
+      sliceObj.matrixAutoUpdate = false; extrasLive.add(sliceObj);
+    }
+    var p = [0, 0, 0], col = [0, 0, 0], du = (ru[1] - ru[0]) / (w - 1), dv = (rv[1] - rv[0]) / (h - 1);
+    p[nAx] = c;
+    for (var j = 0; j < h; j++) {
+      p[vAx] = rv[0] + j * dv;
+      for (var i = 0; i < w; i++) {
+        p[uAx] = ru[0] + i * du;
+        var o = (j * w + i) * 4;
+        if (!sample(F, p[0], p[1], p[2], smpS) || smpS[4] > 0.5) { sliceData[o + 3] = 0; continue; }
+        var val = st.field === 'speed' ? Math.sqrt(smpS[0] * smpS[0] + smpS[1] * smpS[1] + smpS[2] * smpS[2]) / 1.5
+          : st.field === 'cp' ? (sampleCp(F, p[0], p[1], p[2]) + 1.5) / 2.5 : smpS[3] / 0.4;
+        cmap(val, col, 0);
+        sliceData[o] = col[0] * 255; sliceData[o + 1] = col[1] * 255; sliceData[o + 2] = col[2] * 255; sliceData[o + 3] = 228;
+      }
+    }
+    sliceTex.needsUpdate = true;
+    var e = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+    var U = e[uAx].clone().multiplyScalar(ru[1] - ru[0]), V = e[vAx].clone().multiplyScalar(rv[1] - rv[0]), N = e[nAx].clone();
+    var m = new THREE.Matrix4().makeBasis(U, V, N);
+    var ctr = [0, 0, 0]; ctr[nAx] = c; ctr[uAx] = (ru[0] + ru[1]) / 2; ctr[vAx] = (rv[0] + rv[1]) / 2;
+    m.setPosition(ctr[0], ctr[1], ctr[2]);
+    sliceObj.matrix.copy(m); sliceObj.matrixWorldNeedsUpdate = true; sliceObj.visible = true;
   }
 
   // ---------------------------------------------------------------- smoke
-  var MAXP = 60000;
+  var MAXP = 160000, quality = 1;
   var pPos = new Float32Array(MAXP * 3), pCol = new Float32Array(MAXP * 3), pAge = new Float32Array(MAXP), pSize = new Float32Array(MAXP);
   var pVel = new Float32Array(MAXP * 3), pLife = new Float32Array(MAXP), pSpr = new Float32Array(MAXP), alive = 0;
   var sg = new THREE.BufferGeometry();
@@ -501,8 +638,8 @@ function render(ctx) {
     var d = st.docs[st.cur], F = d && d._field;
     if (!d || !F || !st.smoke) { alive = 0; sg.setDrawRange(0, 0); return; }
     var L = d.L, Uv = L / (st.slow / 8);            // on screen the air crosses one car length in slow/8 seconds
-    var TL = 0.06 * L / Uv, base = 0.012 * L * 0.025, s0 = 0.017 * L * (0.7 + 0.3 * st.dens / 100);
-    var life = 3.2 * L / Uv, rate = (220 + 8 * st.dens) * 12 / st.slow, col = SMOKE[st.scol];
+    var TL = 0.06 * L / Uv, base = 0.012 * L * 0.025, s0 = 0.014 * L * (0.7 + 0.3 * st.dens / 100);
+    var life = 3.2 * L / Uv, rate = (560 + 20 * st.dens) * 12 / st.slow * quality, col = SMOKE[st.scol];
     emitAcc += dt * rate;
     var ne = Math.floor(emitAcc); emitAcc -= ne;
     for (var e = 0; e < ne; e++) for (var z = 0; z < nozzles.length && alive < MAXP; z++) {
@@ -529,11 +666,11 @@ function render(ctx) {
       pPos[n * 3] = nx; pPos[n * 3 + 1] = ny; pPos[n * 3 + 2] = nz;
       pAge[n] += dt / pLife[n];
       pSpr[n] += smp2[3] * dt * Uv;
-      pSize[n] = s0 * (1 + 1.8 * pAge[n]) + 0.05 * pSpr[n];
+      pSize[n] = s0 * (1 + 1.6 * pAge[n]) + 0.08 * pSpr[n];
       if (!col) { var spd = Math.sqrt(smp2[0] * smp2[0] + smp2[1] * smp2[1] + smp2[2] * smp2[2]); cmap(spd / 1.5, pCol, n * 3); }
       if (pAge[n] >= 1) kill(n);
     }
-    smokeMat.uniforms.uOpacity.value = (0.03 + 0.06 * st.dens / 100) * (1 + 0.6 * (12 - Math.min(12, st.slow)) / 12);
+    smokeMat.uniforms.uOpacity.value = (0.014 + 0.03 * st.dens / 100) / Math.sqrt(quality) * (1 + 0.6 * (12 - Math.min(12, st.slow)) / 12);
     sg.setDrawRange(0, alive);
     aPos.needsUpdate = true; aCol.needsUpdate = true; aAge.needsUpdate = true; aSize.needsUpdate = true;
   }
@@ -543,6 +680,7 @@ function render(ctx) {
     var showSl = st.slice !== 'off';
     var lg = $('legend');
     if (showSl && st.field === 'speed') { $('legT').textContent = 'Air speed in the slice (km/h)'; ticks([0, .5, 1, 1.5].map(function (f) { return Math.round(f * st.wind); })); }
+    else if (showSl && st.field === 'turb') { $('legT').textContent = 'Turbulence intensity in the slice (% of the wind)'; ticks([0, 10, 20, 30, 40]); }
     else if (showSl || st.mode === 'pressure') { $('legT').textContent = 'Pressure coefficient Cp' + (showSl ? ' (slice)' : ' (surface)'); ticks([-1.5, -0.875, -0.25, 0.375, 1.0]); }
     else if (st.smoke && st.scol === 'speed') { $('legT').textContent = 'Smoke: air speed (km/h)'; ticks([0, .5, 1, 1.5].map(function (f) { return Math.round(f * st.wind); })); }
     else if (st.lines) { $('legT').textContent = 'Streamlines: air speed (km/h)'; ticks([0, .5, 1, 1.5].map(function (f) { return Math.round(f * st.wind); })); }
@@ -573,7 +711,7 @@ function render(ctx) {
       return '<tr class="row' + (id === st.cur ? ' sel' : '') + '" data-id="' + esc(id) + '"><td>' + esc(d.label) + '<div class="barc" style="width:' + (100 * a / maxA).toFixed(0) + '%;background:' + rgb(a / maxA * 0.85) + '"></div></td><td>' + fmt(d.cd, 3) + '</td><td>' + fmt(d.cl, 3) + '</td><td>' + fmt(a, 3) + '</td><td>' + fmt(ff.drag, 0) + '</td><td>' + fmt(ff.pow, 1) + '</td></tr>';
     }).join('');
     Array.prototype.forEach.call($('table').querySelectorAll('tr.row'), function (tr) { tr.onclick = function () { select(tr.getAttribute('data-id')); }; });
-    $('about').innerHTML = 'Lattice Boltzmann LES on the GPU · ' + doc.grid.join('×') + ' cells (' + fmt(doc.dx * 100, 1) + ' cm) · ' + doc.flow_time + ' flow-through times · Re ' + Number(doc.re_phys).toExponential(1) + '. The smoke follows the time-averaged flow of the run, interpolated wherever you put the wand, and spreads with the measured turbulence. Forces are averaged over the last part of the run; the wind slider scales them (same Cd). Drag to orbit, right-drag to pan, scroll to zoom.';
+    $('about').innerHTML = 'Lattice Boltzmann LES on the GPU · ' + doc.grid.join('×') + ' cells (' + fmt(doc.dx * 100, 1) + ' cm) · ' + doc.flow_time + ' flow-through times · Re ' + Number(doc.re_phys).toExponential(1) + '. The smoke and the slices follow the time-averaged flow of the run, interpolated in real time; the smoke spreads with the measured turbulence. Forces are averaged over the last part of the run; the wind slider scales them (same Cd). Drag to orbit, right-drag to pan, scroll to zoom.';
     hist(doc);
   }
   function hist(doc) {
@@ -601,7 +739,13 @@ function render(ctx) {
     var doc = st.docs[id]; if (!doc) return;
     var token = ++selToken, first = st._shown == null;
     st.cur = id; save();
-    if (car) { if (car.cpObj) { carGroup.remove(car.cpObj); disposeTree(car.cpObj); } if (car.original) carGroup.remove(car.original); car = null; }
+    if (car) {
+      if (car.cpObj) { carGroup.remove(car.cpObj); disposeTree(car.cpObj); }
+      if (car.original) carGroup.remove(car.original);
+      car.origWheels.forEach(function (m) { carGroup.remove(m); });
+      car.cpWheels.forEach(function (m) { carGroup.remove(m); m.geometry.dispose(); });
+      car = null;
+    }
     alive = 0;
     if (st._roomL !== doc.L) { buildRoom(doc.L, doc.H); st._roomL = doc.L; }
     if (first || st._shown !== id) frameCar(doc);
@@ -614,10 +758,13 @@ function render(ctx) {
       if (token !== selToken) return;
       var F = r[0], orig = r[1];
       busy('');
-      car = { original: orig, cpObj: orig && F ? pressureCopy(doc, orig, F) : docMesh(doc) };
+      car = { original: orig, cpObj: orig && F ? pressureCopy(doc, orig, F) : docMesh(doc), origWheels: [], cpWheels: [] };
       if (orig) carGroup.add(orig);
       carGroup.add(car.cpObj);
-      showMode(); wandGeometry(); numbers();
+      if (!doc._wheels) doc._wheels = detectWheels(orig || car.cpObj, doc.L);
+      if (orig) { if (!doc._origWheels) doc._origWheels = splitWheels(orig, doc._wheels, carGroup); else doc._origWheels.forEach(function (m) { carGroup.add(m); }); car.origWheels = doc._origWheels; }
+      car.cpWheels = splitWheels(car.cpObj, doc._wheels, carGroup);
+      showMode(); wandGeometry(); numbers(); drawSlice();
     });
   }
 
@@ -678,7 +825,11 @@ function render(ctx) {
   $('smoke').onclick = function () { st.smoke = !st.smoke; this.classList.toggle('on', st.smoke); if (!st.smoke) alive = 0; wandGeometry(); numbers(); legend(); save(); };
   $('lines').onclick = function () { st.lines = !st.lines; this.classList.toggle('on', st.lines); showExtras(); save(); };
   $('slice').onchange = function () { st.slice = this.value; showExtras(); save(); };
-  $('field').onchange = function () { st.field = this.value; paintSlices(); legend(); save(); };
+  $('field').onchange = function () { st.field = this.value; drawSlice(); legend(); save(); };
+  $('spos').oninput = function () { st.spos[st.slice] = +this.value / 1000; drawSlice(); };
+  $('spos').onchange = function () { save(); };
+  $('road').onclick = function () { st.road = !st.road; this.classList.toggle('on', st.road); save(); };
+  $('road').classList.toggle('on', st.road);
   $('model').onchange = function () { select(this.value); };
   $('wind').oninput = function () { st.wind = +this.value; numbers(); legend(); save(); };
   $('res').onchange = function () { st.res = this.value; save(); };
@@ -708,10 +859,19 @@ function render(ctx) {
     if (!el.isConnected) return;
     requestAnimationFrame(frame);
     var real = Math.min(0.25, (now - lastT) / 1000); lastT = now;
-    var nsub = Math.max(1, Math.ceil(real / (1 / 30))), dt = real / nsub;
+    var nsub = Math.max(1, Math.ceil(real / (1 / 30))), dt = real / nsub, tq = performance.now();
     for (var si = 0; si < nsub; si++) stepSmoke(dt);
+    var cost = performance.now() - tq;                     // keep the frame rate: fewer particles on slow machines
+    quality = cost > 14 ? Math.max(0.25, quality * 0.93) : Math.min(1, quality * 1.01);
     var d = st.docs[st.cur];
-    if (d && belt) beltTex.offset.x -= real * (d.L / (st.slow / 8)) / 1.2;
+    if (d && st.road) {
+      var Uv = d.L / (st.slow / 8);                        // the road runs at the speed the smoke sees
+      scrolls.forEach(function (s3) { s3.tex.offset.x = (s3.tex.offset.x - real * Uv / s3.period) % 1; });
+      if (car && d._wheels && d._wheels.length) {
+        d._wheels.forEach(function (W2) { W2.angle = (W2.angle - real * Uv / W2.r) % (2 * Math.PI); });
+        spinWheels(car.origWheels, d._wheels); spinWheels(car.cpWheels, d._wheels);
+      }
+    }
     if (controls) controls.update();
     renderer.render(scene, camera);
   }
