@@ -1,0 +1,20 @@
+{
+    "esasim": {
+        "kind": "files",
+        "version": 1
+    },
+    "release": "esasim-files",
+    "datasets": [],
+    "assets": [
+        {
+            "path": "virtual-wind-tunnel/car-models/1985_delorean_dmc-12_time_machine_bttf.glb",
+            "size": 29284676,
+            "sha256": "d4b613846e2c4e6dd7f8a23c28054496b2422dec742c4ea1bd1fbbe2001eb1ca",
+            "zip": "assets/virtual-wind-tunnel/car-models/1985_delorean_dmc-12_time_machine_bttf.glb",
+            "in": "release",
+            "tag": "esasim-files",
+            "asset": "asset--virtual-wind-tunnel--car-models--1985_delorean_dmc-12_time_machine_bttf.glb"
+        }
+    ],
+    "saved": "2026-11-18T22:08:28+00:00"
+}

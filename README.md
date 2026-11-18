@@ -136,4 +136,10 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 - [Wind tunnel (GPU CFD)](blocks/ws-wind-tunnel-gpu-cfd) · version 6
 - [Wind tunnel view](blocks/ws-wind-tunnel-view) · version 7
 
-Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.
+### Assets
+
+The files the project's views draw with (3D models, textures, sounds), in [assets/](assets/); the large ones are files of the release `esasim-files`:
+
+- `virtual-wind-tunnel/car-models/1985_delorean_dmc-12_time_machine_bttf.glb` (release file asset--virtual-wind-tunnel--car-models--1985_delorean_dmc-12_time_machine_bttf.glb) · 28 MB
+
+Keys pasted in blocks (secret settings) are not saved here, nor are the team and the results of runs.
