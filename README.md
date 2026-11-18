@@ -106,8 +106,8 @@ From one run at 128 cells per length and 120 km/h: BMW X7 Cd 0.43 (CdA 1.37 m²)
 The car models come from [Sketchfab](https://sketchfab.com) and belong to their authors:
 
 - **2019 BMW X7 xDrive40i**: [Ddiaz Design](https://sketchfab.com/ddiaz-design)
-- **2021 Lamborghini Countach LPI 800-4**: [Lexyc16](https://sketchfab.com/Lexyc16)
-- **2026 Mercedes W17**: [Dave Love SketchFab](https://sketchfab.com/Tyler_Dave) ([model page](https://sketchfab.com/3d-models/2026-mercedes-w17-b806f1e70aa343219e7158169549b97b), CC-BY-4.0)
+- **2020 Lamborghini Aventador SVJ 63 Roadster**: [Ddiaz Design](https://sketchfab.com/ddiaz-design)
+- **2021 Lamborghini Countach LPI 800-4**: [VTX](https://sketchfab.com/VTX_car)
 - **2026 Ferrari SF-26**: [Dave Love SketchFab](https://sketchfab.com/Tyler_Dave)
 
 Respect each model's licence on Sketchfab when sharing results. NVIDIA Warp is Apache 2.0. The code of the blocks is EsaSim's.
