@@ -1,16 +1,34 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 2 · worker block, Python: def run(ctx)
+# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 3 · worker block, Python: def run(ctx)
 # A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-18
 #
 # Inputs   ctx.inputs["id"] is a list of files: .path .name .size .read_text() .read_json()
-#   (none)
+#   models      Files (glb, gltf, stl, obj, ply, off) Car models · several · optional · One car per file; orientation and units are found automatically (see the settings)
 # Outputs  ctx.output("id", "name.ext") is the path to write; ctx.write_json / ctx.write_text
+#   tunnel      Files (gz, glb, gltf)     Tunnel results (View) · <model>.tunnel.json.gz, <model>.field.bin.gz and <model>.source.glb for the Wind tunnel view
+#   results     Table (csv)               Results · results.csv: one row per car: Cd, Cl, Cs, frontal area, CdA, drag, lift, drag power
+#   history     Table (csv)               Convergence · convergence.csv: model, t (flow-through times), cd, cl
+#   surfaces    Files (ply)               Pressure surfaces · <model>_cp.ply: the surface coloured by Cp, with a cp vertex property
+#   models      Files (stl)               Sample cars · The built-in cars used, as STL
+#   report      Text (md)                 Report
 #   telemetry   Live telemetry            ctx.telemetry("channel", data) while it runs
 # Settings ctx.params["key"]
-#   (none)
-# Runs on  Any worker. Return a dict to fill the "result" output.
+#   samples     text      Sample cars = "none"
+#   resolution  select    Resolution (cells per car length) = "128 (fine)" of 64 (quick) | 96 (standard) | 128 (fine) | 160 (…
+#   speed_kmh   number    Wind speed (km/h) = 120
+#   flow_time   number    Flow-through times = 8
+#   length_axis select    Length axis (files) = "auto" of auto | x | y | z
+#   up_axis     select    Up axis (files) = "auto" of auto | z | y | x
+#   nose        select    Nose at = "auto" of auto | min | max
+#   units       select    Units (files) = "auto" of auto | m | cm | mm | in
+#   reynolds    number    LES Reynolds number cap = 1000000
+#   smagorinsky number    Smagorinsky constant = 0.17
+#   wall_slip   number    Wall slip (0 no-slip, 1 free-slip) = 0.85
+#   max_triangles number    Triangles in the View (STL/OBJ) = 160000
+# Runs on  NVIDIA GPU. Return a dict to fill the "result" output.
+# Packages warp-lang, numpy, scipy, scikit-image, trimesh, fast-simplification (installed by the worker with pip when missing)
 # EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 # ── end of EsaSim block header ────────────────────────────────────────
 
@@ -185,7 +203,7 @@ def lbm_step(f_in: wp.array4d(dtype=wp.float32), f_out: wp.array4d(dtype=wp.floa
              w: wp.array(dtype=wp.float32), opp: wp.array(dtype=wp.int32),
              my: wp.array(dtype=wp.int32), mz: wp.array(dtype=wp.int32),
              nx: int, ny: int, nz: int, u_in: float, ground_u: float, tau0: float, cs2: float, wall_damp: float, sponge: int,
-             acc: int, rho_m: wp.array3d(dtype=wp.float32), u_m: wp.array3d(dtype=wp.vec3)):
+             acc: int, rho_m: wp.array3d(dtype=wp.float32), u_m: wp.array3d(dtype=wp.vec3), u2_m: wp.array3d(dtype=wp.vec3)):
     x, y, z = wp.tid()
     fl = flag[x, y, z]
     if fl == wp.int8(1):
@@ -318,6 +336,7 @@ def lbm_step(f_in: wp.array4d(dtype=wp.float32), f_out: wp.array4d(dtype=wp.floa
     if acc != 0:
         rho_m[x, y, z] = rho_m[x, y, z] + rho
         u_m[x, y, z] = u_m[x, y, z] + wp.vec3(ux, uy, uz)
+        u2_m[x, y, z] = u2_m[x, y, z] + wp.vec3(ux * ux, uy * uy, uz * uz)
 
 
 @wp.kernel
@@ -397,6 +416,7 @@ class Tunnel:
         self.f1 = wp.zeros((19, nx, ny, nz), dtype=wp.float32, device=d)
         self.rho_m = wp.zeros((nx, ny, nz), dtype=wp.float32, device=d)
         self.u_m = wp.zeros((nx, ny, nz), dtype=wp.vec3, device=d)
+        self.u2_m = wp.zeros((nx, ny, nz), dtype=wp.vec3, device=d)
         self.n_acc = 0
         self.cx = wp.array(C[:, 0].copy(), dtype=wp.int32, device=d)
         self.cy = wp.array(C[:, 1].copy(), dtype=wp.int32, device=d)
@@ -436,7 +456,7 @@ class Tunnel:
             wp.launch(lbm_step, dim=self.shape, device=self.device,
                       inputs=[self.f0, self.f1, self.flag, self.uw, self.cx, self.cy, self.cz, self.w, self.opp,
                               self.my, self.mz, nx, ny, nz, u, self.ground_u * u / self.u_lat, self.tau0, self.cs2, self.wall_damp,
-                              self.sponge, 1 if accumulate else 0, self.rho_m, self.u_m])
+                              self.sponge, 1 if accumulate else 0, self.rho_m, self.u_m, self.u2_m])
             self.f0, self.f1 = self.f1, self.f0
             if accumulate:
                 self.n_acc += 1
@@ -456,10 +476,10 @@ class Tunnel:
 
     def means(self):
         n = max(self.n_acc, 1)
-        return self.rho_m.numpy() / n, self.u_m.numpy() / n
+        return self.rho_m.numpy() / n, self.u_m.numpy() / n, self.u2_m.numpy() / n
 
 
-import os, json, gzip, base64, math, time
+import os, json, gzip, base64, math, time, shutil
 
 
 def _b64(a):
@@ -474,33 +494,54 @@ def _slug(s):
 
 
 def _load_mesh(path, length_axis, up_axis, nose, units):
+    """Places a car in the tunnel frame (x: nose to tail, y: left, z: up, wheels on z = 0).
+    Returns vertices, faces, the 4x4 matrix from the file's world coordinates to the tunnel, and a note."""
     import trimesh
-    m = trimesh.load(path, force="mesh", process=True)
-    if isinstance(m, trimesh.Scene):
-        m = m.dump(concatenate=True)
-    v = np.asarray(m.vertices, dtype=np.float64)
+    ext = path.lower().rsplit(".", 1)[-1]
+    m = trimesh.load(path, force="mesh", process=False)
+    v0 = np.asarray(m.vertices, dtype=np.float64)
     f = np.asarray(m.faces, dtype=np.int64)
-    ax = {"x": 0, "y": 1, "z": 2}
-    li, ui = ax[length_axis], ax[up_axis]
+    ext_ = v0.max(0) - v0.min(0)
+    li = int(np.argmax(ext_)) if length_axis == "auto" else "xyz".index(length_axis)
+    if up_axis == "auto":
+        pref = [1, 2, 0] if ext in ("glb", "gltf") else [2, 1, 0]
+        ui = [a for a in pref if a != li][0]
+    else:
+        ui = "xyz".index(up_axis)
     if li == ui:
         raise ValueError("length axis and up axis must differ")
     wi = 3 - li - ui
-    v = v[:, [li, wi, ui]]
+    R = np.zeros((3, 3))
+    R[0, li] = 1.0
+    R[2, ui] = 1.0
+    R[1, wi] = 1.0
+    if np.linalg.det(R) < 0:  # a proper rotation: never a mirror image of the car
+        R[1, wi] = -1.0
+    v = v0 @ R.T
+    L = v[:, 0].max() - v[:, 0].min()
+    if nose == "auto":
+        # the rear is the taller end (roof line, boot, rear wing): the nose is at the other end
+        x0, x1 = v[:, 0].min(), v[:, 0].max()
+        top_min = v[v[:, 0] < x0 + 0.15 * L, 2].max()
+        top_max = v[v[:, 0] > x1 - 0.15 * L, 2].max()
+        nose = "max" if top_min > top_max else "min"
     if nose == "max":
-        v[:, 0] = -v[:, 0]
-        v[:, 1] = -v[:, 1]
-    ext = v.max(0) - v.min(0)
+        R = np.diag([-1.0, -1.0, 1.0]) @ R  # turn the car round (180 degrees about the vertical)
+        v = v0 @ R.T
     if units == "auto":
-        scale = 0.001 if ext[0] > 30 else (0.01 if ext[0] > 15 else 1.0)
+        scale = 0.001 if L > 30 else (0.01 if L > 15 else 1.0)
     else:
         scale = {"m": 1.0, "cm": 0.01, "mm": 0.001, "in": 0.0254}[units]
     v = v * scale
-    v[:, 0] -= v[:, 0].min()
-    v[:, 1] -= 0.5 * (v[:, 1].max() + v[:, 1].min())
-    v[:, 2] -= v[:, 2].min()
-    if (v[:, 0].max() < 0.05):
+    t = np.array([-v[:, 0].min(), -0.5 * (v[:, 1].max() + v[:, 1].min()), -v[:, 2].min()])
+    v = v + t
+    if v[:, 0].max() < 0.05:
         raise ValueError("model is empty or too small")
-    return v, f
+    M = np.eye(4)
+    M[:3, :3] = scale * R
+    M[:3, 3] = t
+    note = f"length along {'xyz'[li]}, up {'xyz'[ui]}, nose at {nose} {'xyz'[li]}, scale {scale:g}"
+    return v, f, M, note
 
 
 def _sample_mesh(kind):
@@ -641,16 +682,17 @@ def _slice_u8(a, lo, hi, mask):
 
 
 def run(ctx):
+    from scipy.ndimage import map_coordinates
     wp.config.quiet = True
     wp.init()
     P = ctx.params
-    N = int(float(str(P.get("resolution", "96 (standard)")).split()[0]))
+    N = int(float(str(P.get("resolution", "128 (fine)")).split()[0]))
     speed_kmh = float(P.get("speed_kmh", 120))
     flow_time = float(P.get("flow_time", 8))
     re_eff = float(P.get("reynolds", 1e6))
     u_lat = 0.1
     rho_air, nu_air = 1.204, 1.5e-5
-    samples = [s.strip() for s in str(P.get("samples", "auto")).replace(";", ",").split(",") if s.strip()]
+    samples = [s.strip() for s in str(P.get("samples", "none")).replace(";", ",").split(",") if s.strip()]
     device = "cuda" if wp.is_cuda_available() else "cpu"
     if device == "cuda":
         ctx.log(f"GPU: {wp.get_device('cuda').name}")
@@ -661,11 +703,11 @@ def run(ctx):
              if fi.name.lower().rsplit(".", 1)[-1] in ("stl", "obj", "glb", "gltf", "ply", "off")]
     for fi in files:
         try:
-            v, f = _load_mesh(fi.path, P.get("length_axis", "x"), P.get("up_axis", "z"), P.get("nose", "min"),
-                              P.get("units", "auto"))
+            v, f, M, note = _load_mesh(fi.path, P.get("length_axis", "auto"), P.get("up_axis", "auto"),
+                                       P.get("nose", "auto"), P.get("units", "auto"))
             label = os.path.splitext(fi.name)[0]
-            models.append(dict(id=_slug(label), label=label, v=v, f=f, source=fi.name))
-            ctx.log(f"Loaded {fi.name}: {len(f)} triangles")
+            models.append(dict(id=_slug(label), label=label, v=v, f=f, source=fi.name, path=fi.path, M=M))
+            ctx.log(f"Loaded {fi.name}: {len(f)} triangles; {note}")
         except Exception as e:
             ctx.log(f"Could not read {fi.name}: {e}")
     if samples == ["auto"]:
@@ -682,7 +724,7 @@ def run(ctx):
         models.append(dict(id=s, label=label, v=v, f=f, source="sample"))
         _write_stl(ctx.output("models", f"{s}.stl"), v, f)
     if not models:
-        raise RuntimeError("No car models: wire STL/OBJ/GLB files into Car models, or choose sample cars.")
+        raise RuntimeError("No car models: upload GLB/glTF/STL/OBJ files to the Car models dataset (or set Sample cars).")
     ids = set()
     for m in models:
         base, k = m["id"], 2
@@ -697,8 +739,8 @@ def run(ctx):
         L, W, H = (v.max(0) - v.min(0))
         dx = L / N
         up, down = 1.0 * L, 2.6 * L
-        width = max(1.6 * L, 5.0 * W)
-        height = max(1.0 * L, 3.6 * H)
+        width = max(1.4 * L, 5.0 * W)
+        height = max(0.75 * L, 3.6 * H)
         nx = int(round((up + L + down) / dx))
         ny = int(round(width / dx)) // 2 * 2
         nz = int(round(height / dx))
@@ -763,16 +805,16 @@ def run(ctx):
         cd_std = float(avg[:, 1].std())
         for row in h[:: max(1, len(h) // 400)]:
             history_rows.append(dict(model=m["label"], t=round(row[0], 3), cd=round(row[1], 4), cl=round(row[2], 4)))
-        ctx.progress(100 * (mi + 0.92) / len(models), f"{m['label']}: pressure and streamlines")
+        ctx.progress(100 * (mi + 0.92) / len(models), f"{m['label']}: pressure, streamlines and the flow field")
 
-        rho_m, u_m = tun.means()
+        rho_m, u_m, u2_m = tun.means()
         del tun
         cp = ((rho_m - 1.0) / 3.0) / q_lat
+        del rho_m
         cp_f = _fill_solid(cp, solid)
         u_m[solid] = 0
         vd, fd = _decimate(v, f, int(P.get("max_triangles", 160000)))
         nrm = _vertex_normals(vd, fd)
-        from scipy.ndimage import map_coordinates
         pos = (vd + nrm * 0.8 * dx - origin) / dx - 0.5
         cp_v = map_coordinates(cp_f, pos.T, order=1, mode="nearest").astype(np.float32)
         ys = np.linspace(-0.62 * W, 0.62 * W, 15)
@@ -804,6 +846,42 @@ def run(ctx):
                    "y0": float((-yw + 0.5) * dx), "z": float((zc + 0.5) * dx), "dx": dx,
                    "speed": _b64(_slice_u8(xy_s, 0, 1.5, xy_m).T.copy()), "cp": _b64(_slice_u8(xy_c, -1.5, 1.0, xy_m).T.copy())},
         }
+        del spd
+        # the flow around the car for the View's smoke: mean velocity, pressure and turbulence on a coarser grid,
+        # read back by trilinear interpolation wherever the smoke wand is put
+        urms = np.sqrt(np.maximum(u2_m - u_m * u_m, 0).sum(-1) / 3.0) / u_lat
+        del u2_m
+        urms[solid] = 0
+        fx0, fx1 = -0.6 * L, 2.4 * L
+        fy = 0.5 * W + max(0.45 * W, 0.12 * L)
+        fz = max(2.0 * H, H + 0.25 * L)
+        hf = max(L / 80.0, ((fx1 - fx0) * 2 * fy * fz / 1.6e6) ** (1 / 3))
+        gx = np.arange(fx0, fx1, hf); gy = np.arange(-fy, fy + 1e-9, hf); gz = np.arange(0.5 * hf, fz, hf)
+        GX, GY, GZ = np.meshgrid(gx, gy, gz, indexing="ij")
+        ci = np.stack([(GX - origin[0]) / dx - 0.5, (GY - origin[1]) / dx - 0.5, (GZ - origin[2]) / dx - 0.5])
+        del GX, GY, GZ
+        fs = map_coordinates(solid.astype(np.float32), ci, order=1, mode="nearest") > 0.5
+        fu = [map_coordinates(np.ascontiguousarray(u_m[..., k]), ci, order=1, mode="nearest") / u_lat for k in range(3)]
+        fcp = map_coordinates(cp_f, ci, order=1, mode="nearest")
+        ft = map_coordinates(urms, ci, order=1, mode="nearest")
+        del ci, urms
+        q8 = lambda a: np.clip(np.round(a * 80.0), -127, 127).astype(np.int8)
+        cp8 = np.clip(np.round((fcp + 1.5) / 2.5 * 254), 0, 254).astype(np.uint8)
+        t8 = np.clip(np.round(ft * 400.0), 0, 254).astype(np.uint8)
+        t8[fs] = 255
+        field_name = f"{m['id']}.field.bin.gz"
+        with gzip.open(ctx.output("tunnel", field_name), "wb", compresslevel=6) as fh:
+            for a in (q8(fu[0]), q8(fu[1]), q8(fu[2]), cp8, t8):
+                fh.write(np.ascontiguousarray(a).tobytes())
+        field = {"file": field_name, "n": [len(gx), len(gy), len(gz)], "origin": [float(gx[0]), float(gy[0]), float(gz[0])],
+                 "h": float(hf), "order": "x-major (index = (i*ny + j)*nz + k)",
+                 "arrays": ["ux int8 /80", "uy int8 /80", "uz int8 /80", "cp uint8 (v/254*2.5-1.5)", "turb uint8 /400, 255 = solid"]}
+        ctx.log(f"[{m['label']}] flow field for the smoke: {len(gx)}x{len(gy)}x{len(gz)} cells of {hf*100:.1f} cm")
+        del fu, fcp, ft
+        source_file = None
+        if m.get("path") and m["source"].lower().endswith((".glb", ".gltf")):
+            source_file = f"{m['id']}.source." + m["source"].lower().rsplit(".", 1)[-1]
+            shutil.copyfile(m["path"], ctx.output("tunnel", source_file))
         V = speed_kmh / 3.6
         qd = 0.5 * rho_air * V * V
         res = dict(model=m["label"], source=m["source"], length_m=round(L, 3), width_m=round(W, 3), height_m=round(H, 3),
@@ -822,7 +900,8 @@ def run(ctx):
             "grid": [nx, ny, nz], "flow_time": flow_time,
             "mesh": {"v": _b64(vd.astype(np.float32)), "f": _b64(fd.astype(np.uint32)), "cp": _b64(cp_v)},
             "streamlines": {"offsets": _b64(np.asarray(offs, np.int32)), "p": _b64(sl_pts), "s": _b64(sl_spd)},
-            "slices": slices,
+            "slices": slices, "field": field, "source_file": source_file,
+            "transform": (np.asarray(m["M"]).ravel().tolist() if m.get("M") is not None else None),
             "history": [[round(r[0], 3), round(r[1], 4), round(r[2], 4)] for r in h[:: max(1, len(h) // 300)]],
         }
         with gzip.open(ctx.output("tunnel", f"{m['id']}.tunnel.json.gz"), "wt") as fh:
@@ -830,7 +909,7 @@ def run(ctx):
         _write_ply(ctx.output("surfaces", f"{m['id']}_cp.ply"), vd, fd, cp_v)
         ctx.telemetry("tunnel", {"model": m["id"], "label": m["label"], "index": mi, "count": len(models),
                                  "done": True, "cd": round(cd, 4), "cl": round(cl, 4)})
-        del rho_m, u_m, cp, cp_f, spd, solid
+        del u_m, cp, cp_f, solid
 
     import csv
     with open(ctx.output("results", "results.csv"), "w", newline="") as fh:

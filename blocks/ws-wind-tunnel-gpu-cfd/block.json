@@ -7,14 +7,214 @@
     "side": "backend",
     "customizable": true,
     "summary": "A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.",
-    "help": "",
-    "inputs": [],
-    "outputs": [],
-    "params": [],
+    "help": "Wire car models (GLB/glTF, STL, OBJ, PLY, OFF; one car per file) into Car models, for example from a Dataset block. Each car is turned so its length runs along the wind and its wheels stand on the road: by default the longest side is the length, glTF files are Y-up (others Z-up), the taller end is the rear, and mm or cm are scaled to metres (set Length axis, Up axis, Nose at or Units to override). It is voxelized and simulated in turn: D3Q19 lattice Boltzmann with a regularized collision and a Smagorinsky LES model, a partial-slip wall model on the body, slip floor (like a rolling road), velocity inlet, pressure outlet with a sponge. Forces come from momentum exchange, averaged over the last part of the run. Outputs for the Wind tunnel view: <model>.tunnel.json.gz (surface pressure, streamlines, slices, history, transform), <model>.field.bin.gz (mean velocity, pressure and turbulence around the car, for the real-time smoke) and the original <model>.source.glb with its materials. Also results.csv, convergence.csv, surfaces coloured by Cp (PLY) and a report. Sample cars (fastback, notchback, estate, suv, pickup, van, sports, ahmed25, all) only when asked in Sample cars.",
+    "inputs": [
+        {
+            "id": "models",
+            "label": "Car models",
+            "type": "files",
+            "many": true,
+            "optional": true,
+            "formats": [
+                "glb",
+                "gltf",
+                "stl",
+                "obj",
+                "ply",
+                "off"
+            ],
+            "help": "One car per file; orientation and units are found automatically (see the settings)"
+        }
+    ],
+    "outputs": [
+        {
+            "id": "tunnel",
+            "label": "Tunnel results (View)",
+            "type": "files",
+            "formats": [
+                "gz",
+                "glb",
+                "gltf"
+            ],
+            "help": "<model>.tunnel.json.gz, <model>.field.bin.gz and <model>.source.glb for the Wind tunnel view"
+        },
+        {
+            "id": "results",
+            "label": "Results",
+            "type": "table",
+            "formats": [
+                "csv"
+            ],
+            "help": "results.csv: one row per car: Cd, Cl, Cs, frontal area, CdA, drag, lift, drag power"
+        },
+        {
+            "id": "history",
+            "label": "Convergence",
+            "type": "table",
+            "formats": [
+                "csv"
+            ],
+            "help": "convergence.csv: model, t (flow-through times), cd, cl"
+        },
+        {
+            "id": "surfaces",
+            "label": "Pressure surfaces",
+            "type": "files",
+            "formats": [
+                "ply"
+            ],
+            "help": "<model>_cp.ply: the surface coloured by Cp, with a cp vertex property"
+        },
+        {
+            "id": "models",
+            "label": "Sample cars",
+            "type": "files",
+            "formats": [
+                "stl"
+            ],
+            "help": "The built-in cars used, as STL"
+        },
+        {
+            "id": "report",
+            "label": "Report",
+            "type": "text",
+            "formats": [
+                "md"
+            ]
+        }
+    ],
+    "params": [
+        {
+            "key": "samples",
+            "label": "Sample cars",
+            "type": "text",
+            "default": "none",
+            "help": "none: only the cars wired in; or a list of built-in cars: fastback, notchback, estate, suv, pickup, van, sports, ahmed25; all; auto: the samples when no files are wired"
+        },
+        {
+            "key": "resolution",
+            "label": "Resolution (cells per car length)",
+            "type": "select",
+            "default": "128 (fine)",
+            "options": [
+                "64 (quick)",
+                "96 (standard)",
+                "128 (fine)",
+                "160 (very fine)"
+            ]
+        },
+        {
+            "key": "speed_kmh",
+            "label": "Wind speed (km/h)",
+            "type": "number",
+            "default": 120,
+            "min": 10,
+            "max": 400
+        },
+        {
+            "key": "flow_time",
+            "label": "Flow-through times",
+            "type": "number",
+            "default": 8,
+            "min": 3,
+            "max": 40,
+            "help": "How long each car is simulated, in car lengths of air passing by; the last ~55% is averaged"
+        },
+        {
+            "key": "length_axis",
+            "label": "Length axis (files)",
+            "type": "select",
+            "default": "auto",
+            "options": [
+                "auto",
+                "x",
+                "y",
+                "z"
+            ]
+        },
+        {
+            "key": "up_axis",
+            "label": "Up axis (files)",
+            "type": "select",
+            "default": "auto",
+            "options": [
+                "auto",
+                "z",
+                "y",
+                "x"
+            ],
+            "help": "auto: Y for glTF/GLB (the glTF standard), Z for the others"
+        },
+        {
+            "key": "nose",
+            "label": "Nose at",
+            "type": "select",
+            "default": "auto",
+            "options": [
+                "auto",
+                "min",
+                "max"
+            ],
+            "help": "auto: the taller end is taken as the rear; min / max: the front is at the smallest / largest coordinate of the length axis"
+        },
+        {
+            "key": "units",
+            "label": "Units (files)",
+            "type": "select",
+            "default": "auto",
+            "options": [
+                "auto",
+                "m",
+                "cm",
+                "mm",
+                "in"
+            ]
+        },
+        {
+            "key": "reynolds",
+            "label": "LES Reynolds number cap",
+            "type": "number",
+            "default": 1000000,
+            "min": 1000,
+            "max": 100000000
+        },
+        {
+            "key": "smagorinsky",
+            "label": "Smagorinsky constant",
+            "type": "number",
+            "default": 0.17,
+            "min": 0.05,
+            "max": 0.4
+        },
+        {
+            "key": "wall_slip",
+            "label": "Wall slip (0 no-slip, 1 free-slip)",
+            "type": "number",
+            "default": 0.85,
+            "min": 0,
+            "max": 1
+        },
+        {
+            "key": "max_triangles",
+            "label": "Triangles in the View (STL/OBJ)",
+            "type": "number",
+            "default": 160000,
+            "min": 5000,
+            "max": 1000000
+        }
+    ],
     "hardware": [
-        "cpu"
+        "nvidia"
+    ],
+    "packages": [
+        "warp-lang",
+        "numpy",
+        "scipy",
+        "scikit-image",
+        "trimesh",
+        "fast-simplification"
     ],
     "esasim": {
-        "version": 2
+        "version": 3
     }
 }
