@@ -14,14 +14,14 @@
         {
             "name": "1 · Wind tunnel",
             "file": "blueprints/1-wind-tunnel.json",
-            "published_version": 5,
+            "published_version": 6,
             "nodes": 7
         }
     ],
     "blocks": [
         {
             "id": "ws-wind-tunnel-gpu-cfd",
-            "version": 4,
+            "version": 5,
             "name": "Wind tunnel (GPU CFD)"
         },
         {

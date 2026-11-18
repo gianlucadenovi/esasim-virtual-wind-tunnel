@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 4 · worker block, Python: def run(ctx)
+# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 5 · worker block, Python: def run(ctx)
 # A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-18
@@ -703,6 +703,13 @@ def run(ctx):
             except ValueError:
                 ctx.log(f"Real lengths: cannot read '{line.strip()}' (write: part of the file name = metres)")
     device = "cuda" if wp.is_cuda_available() else "cpu"
+    mem_budget = 0
+    if device == "cuda":
+        try:
+            dev = wp.get_device("cuda:0")
+            mem_budget = 0.88 * float(getattr(dev, "free_memory", 0) or 0.8 * dev.total_memory)
+        except Exception:
+            mem_budget = 0
     if device == "cuda":
         ctx.log(f"GPU: {wp.get_device('cuda').name}")
     ctx.log(f"Wind tunnel on {device}: {N} cells per car length, {speed_kmh:.0f} km/h, {flow_time:g} flow-through times")
@@ -757,10 +764,19 @@ def run(ctx):
     for mi, m in enumerate(models):
         v, f = m["v"], m["f"]
         L, W, H = (v.max(0) - v.min(0))
-        dx = L / N
         up, down = 1.0 * L, 2.6 * L
         width = max(1.4 * L, 5.0 * W)
         height = max(0.75 * L, 3.6 * H)
+        # the grid must fit in the GPU's memory (about 200 bytes a cell): beyond it the driver spills into system
+        # memory and the run crawls, so a car too big for the chosen resolution gets the finest grid that fits
+        Nm = N
+        if mem_budget:
+            cells = (up + L + down) * width * height / L ** 3 * N ** 3
+            if cells * 200 > mem_budget:
+                Nm = int(N * (mem_budget / (cells * 200)) ** (1 / 3)) // 4 * 4
+                ctx.log(f"[{m['label']}] {N} cells per car length needs {cells * 200 / 1e9:.1f} GB, more than this GPU has free: "
+                        f"using {Nm} for this car")
+        dx = L / Nm
         nx = int(round((up + L + down) / dx))
         ny = int(round(width / dx)) // 2 * 2
         nz = int(round(height / dx))
@@ -772,12 +788,12 @@ def run(ctx):
         uw = np.zeros((1, 1, 1, 3), np.float32)
         re_phys = speed_kmh / 3.6 * L / nu_air
         re = min(re_eff, re_phys)
-        tau0 = 0.5 + 3.0 * u_lat * N / re
+        tau0 = 0.5 + 3.0 * u_lat * Nm / re
         ctx.log(f"[{m['label']}] {L:.2f} x {W:.2f} x {H:.2f} m, grid {nx}x{ny}x{nz} = {nx*ny*nz/1e6:.1f} M cells, "
                 f"dx {dx*100:.1f} cm, frontal area {area:.2f} m², Re {re_phys:.2e} (LES at {re:.1e})")
         tun = Tunnel(solid, uw, u_lat, tau0, cs=float(P.get("smagorinsky", 0.17)), device=device, u0=0.0,
                      wall_slip=float(P.get("wall_slip", 0.85)))
-        steps_per_T = N / u_lat
+        steps_per_T = Nm / u_lat
         steps = int(flow_time * steps_per_T)
         ramp = int(1.5 * steps_per_T)
         avg_from = int(max(ramp + steps_per_T, steps * 0.45))
@@ -805,6 +821,9 @@ def run(ctx):
                 x0, x1 = int((up - 0.5 * L) / dx), int((up + 2.4 * L) / dx)
                 z1 = min(nz, int(2.2 * H / dx) + 1)
                 sl = sl[x0:x1, :z1]
+                # telemetry items must stay under 60 KB: thin the live slice on fine grids (about 48 KB in base64)
+                k = max(1, int(np.ceil(np.sqrt(sl.shape[0] * sl.shape[1] / 36000.0))))
+                sl = sl[::k, ::k]
                 q = _slice_u8(sl / u_lat, 0.0, 1.5, sl < 0)
                 mean = np.array(hist)[-200:] if hist else None
                 ctx.telemetry("tunnel", {
@@ -815,7 +834,7 @@ def run(ctx):
                     "averaging": s >= avg_from,
                     "mlups": round(s * nx * ny * nz / max(now - t0, 1e-3) / 1e6, 1),
                     "slice": {"w": int(q.shape[0]), "h": int(q.shape[1]), "data": _b64(q.T.copy()),
-                              "x0": float(origin[0] + x0 * dx), "dx": dx},
+                              "x0": float(origin[0] + x0 * dx), "dx": dx * k},
                 })
                 ctx.progress(100 * (mi + s / steps * 0.9) / len(models), f"{m['label']}: t = {s/steps_per_T:.1f} L/U")
         elapsed = time.time() - t0
