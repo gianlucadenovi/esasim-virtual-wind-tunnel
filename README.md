@@ -2,41 +2,123 @@
 ![Virtual wind tunnel](assets/cover.jpg)
 <!-- /esasim: cover -->
 
+<div align="center">
+
+<!-- Banner: upload a picture named banner.png under Data › Readme pictures (a car with the smoke rake in front works well), then: ![Virtual wind tunnel](pictures/banner.png) -->
+
 # Virtual wind tunnel
 
-An interactive wind tunnel for car models, in the spirit of NVIDIA's *Digital Twins for Fluid Simulation* blueprint, run on your own GPU workers.
+**Upload your car models and study their aerodynamics in a wind tunnel computed on your own GPU: drag, lift, surface pressure, and smoke you move through the flow in real time.**
 
-## How to use it
+Every car in the **Car models** dataset is placed on the floor of a virtual tunnel and simulated in turn with lattice-Boltzmann CFD written in NVIDIA Warp. Then the View puts it in a wind gallery: the car with its own materials on an asphalt belt, a smoke wand you drag in front of it, flow slices you slide through the air, and a table that ranks every car by drag.
 
-1. **Upload your cars**: in *Data*, open the dataset **Car models** and add GLB/glTF, STL, OBJ, PLY or OFF files (one car per file). Orientation and units are found automatically: the longest side is the car's length, glTF files are Y-up (others Z-up), the taller end is taken as the rear, and sizes in mm or cm are scaled to metres. If a car comes out the wrong way round, set *Length axis*, *Up axis*, *Nose at* or *Units* on the Wind tunnel block. Models drawn at the wrong size (common on Sketchfab) are fixed with *Real lengths*: one line per car, part of its file name = its real length in metres (for example `x7 = 5.15`).
-2. **Run** the flow *1 · Wind tunnel* (or press **Run tunnel** in the View). Each car is placed on the road of a virtual tunnel and simulated in turn on the GPU.
-3. **Study** them in the View, a wind gallery with a moving asphalt road (rolling road) and spinning wheels:
-   - **Car**: *Original* shows the model with its own materials (GLB/glTF), *Pressure* paints the surface pressure (Cp) on it, *Paint* shows it in a neutral finish.
-   - **Smoke wand**: a rake of smoke nozzles in front of the car. Drag the wand's handle in the 3D view, or use the sliders, to move it in real time: the smoke follows the computed flow (interpolated from the simulation) and spreads where the flow is turbulent.
-   - **Slices**: side, top or cross-section planes of air speed, pressure or turbulence, moved through the flow in real time with a slider.
-   - **Rolling road**: the asphalt moves under the car at the wind speed and the wheels spin (wheels are found automatically from where the tyres touch the road).
-   - Streamlines, a wind-speed slider for drag force and power, and a table that ranks all models by drag.
+![type](https://img.shields.io/badge/type-Automotive-blue) ![language](https://img.shields.io/badge/language-Python-3776AB) ![runs on](https://img.shields.io/badge/runs%20on-NVIDIA%20%7C%20CPU-6f42c1) ![method](https://img.shields.io/badge/method-Lattice%20Boltzmann%20LES-orange) ![input](https://img.shields.io/badge/input-GLB%20%7C%20glTF%20%7C%20STL%20%7C%20OBJ-178c8c) [![made with](https://img.shields.io/badge/made%20with-EsaSim-0b7285)](https://esacode.com/)
 
-## What it computes
+</div>
 
-- **Solver**: lattice Boltzmann method (D3Q19) with a regularized collision and a Smagorinsky LES model, written in NVIDIA Warp and run on the worker's GPU (CPU fallback). Partial-slip wall model on the body, velocity inlet, pressure outlet with a sponge zone, slip floor (like a rolling road), periodic side walls, static wheels in the simulation.
-- **Grid**: *Resolution* cells per car length (64 quick, 96 standard, 128 fine, 160 very fine). At 128 a car is about 14 to 27 million cells and takes 3 to 5 minutes on an RTX 3070.
-- **Outputs**: `results.csv` (Cd, Cl, side force, CdA, drag, lift and drag power at the chosen speed), per-car `*_cp.ply` surfaces coloured by pressure, the View's files (`*.tunnel.json.gz`, `*.field.bin.gz` with the mean velocity, pressure and turbulence around the car, and the original GLB), and a Markdown report.
+## Overview
 
-## Accuracy
+A wind tunnel blows air at a fixed car and measures what the air does to it: the drag that costs fuel or battery, the lift or downforce that changes grip, and where the flow separates and leaves a turbulent wake. Smoke streams make the flow visible; pressure taps show where the surface is pushed and pulled.
 
-This is a fast, coarse-grid digital twin for comparing designs, not certification CFD. Absolute Cd values depend on resolution; compare cars with each other at the same settings. Thin race-car wings and floors are smaller than the grid cells, so their downforce is underestimated.
+This project does the same in a computer, in the spirit of NVIDIA's *Digital Twins for Fluid Simulation* blueprint. The air around the car is a lattice of millions of cells; at each time step every cell exchanges particles with its 18 neighbours (the lattice Boltzmann method), and the small eddies too fine for the grid are modelled (LES, large-eddy simulation). The run averages the flow over the last part of the simulation and keeps it, so the View can send smoke anywhere through it afterwards, at any speed, without simulating again.
 
-## Model credits
+Nobody has to prepare the models. Each file is turned to face the wind, scaled to metres and turned into a solid on the grid by itself; the original model, with its materials, is kept for the View.
 
-The car models used in this project come from [Sketchfab](https://sketchfab.com) and belong to their authors:
+## Flows
+
+### 1 · Wind tunnel
+
+[**Open the blueprint →**](https://esacode.com/app/projects/22/flows/79)
+
+| Block | What it does |
+|---|---|
+| **Car models** | The dataset of cars to test: GLB/glTF, STL, OBJ, PLY or OFF, one car per file. |
+| **Wind tunnel (GPU CFD)** | Orients and scales each car, builds the grid, runs the flow on the GPU and writes the forces, the mean flow field, the pressure on the surface and the report. |
+| **Live flow** | Sends the tunnel's progress to the View while it runs: the car being simulated, its drag so far, the speed of the solver and a live slice of the flow. |
+| **Wind tunnel** | The 3D wind gallery (below). |
+| **Results**, **Drag by model**, **Report** | The table of forces, a bar chart of Cd and CdA by car, and the run's Markdown report. |
+
+## The View
+
+- **Car**: **Original** shows the model with its own materials (GLB/glTF); **Pressure** paints the surface pressure coefficient Cp on the same geometry (red where the air pushes, blue where it pulls); **Paint** shows it in a neutral finish.
+- **Smoke wand**: a rake of nozzles in front of the car. Drag its yellow handle in the 3D view, or use the sliders: number of jets, vertical or horizontal rake or a single point, height, side, spacing, distance ahead, density and colour (yellow, white or by air speed). The smoke follows the computed mean flow, interpolated wherever the wand is, and spreads where the run measured turbulence.
+- **Slow motion**: the smoke moves at the **Wind** speed divided by the slow-motion factor; ×1 is real time.
+- **Slice**: a side, top or cross-section plane of air speed, pressure or turbulence, sampled from the flow as you move it with its slider.
+- **Streamlines** from the run, and the **Wind** slider, which gives the drag force and the power it takes at that speed (same Cd).
+- **Compare models**: every car ranked by CdA (drag area), with Cd, Cl, drag and power; click one to show it. Beside it, the drag coefficient over the run, with the averaged part shaded.
+- **Run tunnel** starts a new run with the chosen resolution and wind speed, and the **Live tunnel** panel follows it.
+- The gallery: a dark asphalt belt just larger than the car, set into a polished floor that mirrors the car and the walls.
+
+## What is computed
+
+| Part | How |
+|---|---|
+| **Solver** | lattice Boltzmann D3Q19, regularized collision, Smagorinsky LES (Cs 0.17), written in NVIDIA Warp |
+| **Tunnel** | velocity inlet, pressure outlet with a sponge zone, slip floor (as on a rolling road), periodic sides; the wind ramps up from rest |
+| **Car surface** | halfway bounce-back with a partial-slip wall model, since the boundary layer is thinner than a cell; wheels stand still |
+| **Grid** | *Resolution* cells per car length: 64 quick, 96 standard, 128 fine, 160 very fine |
+| **Forces** | momentum exchange on the surface, averaged over the second half of the run: drag, lift and side force, as Cd, Cl and CdA on the frontal area |
+| **Flow field** | the mean velocity, pressure and turbulence intensity around the car, kept on a coarser grid for the View |
+
+At 128 cells per length a car takes 14 to 27 million cells and 3 to 5 minutes on an RTX 3070 (about 900 million cell updates a second).
+
+## Where it runs
+
+- **NVIDIA GPU**: the way to run it.
+- **CPU**: Warp falls back to the CPU; use **64 (quick)** there, it is much slower.
+- The View runs in the browser; smoke and slices are computed there from the run's files, so moving them needs no new run.
+
+## What you need
+
+- A machine with the EsaSim worker (Project › Compute), with an NVIDIA GPU.
+- Python packages, installed by the worker the first time: `warp-lang`, `numpy`, `scipy`, `scikit-image`, `trimesh` and `fast-simplification`. No account or key is needed.
+- Your car models in the **Car models** dataset.
+
+## How to run it
+
+1. **Upload your cars**: under **Data**, open **Car models** and add the files, one car per file.
+2. Under **Compute**, check that a machine with an NVIDIA GPU is available for this project.
+3. Run [**1 · Wind tunnel**](https://esacode.com/app/projects/22/flows/79), or press **Run tunnel** in the View. The cars are simulated one after the other.
+4. Switch to **View**, maximize the **Wind tunnel** panel, pick a model and move the smoke wand.
+
+## Settings worth knowing
+
+On the **Wind tunnel (GPU CFD)** block:
+
+- **Resolution** (128 fine) and **Speed** (120 km/h). The speed sets the Reynolds number; the View's Wind slider only rescales the forces.
+- **Flow time** (8): how many times the air crosses the car length; the second half is averaged.
+- **Real lengths**: one line per car, part of its file name = its real length in metres (for example `x7 = 5.15`). Models on Sketchfab are often drawn at the wrong size.
+- **Length axis**, **Up axis**, **Nose at**, **Units** (auto): the orientation is found by itself (the longest side is the length, glTF is Y-up, the taller end is the rear, sizes in mm or cm become metres); set them if a car comes out the wrong way round.
+- **Reynolds cap**, **Smagorinsky**, **Wall slip**, **Max triangles**: solver details; the defaults suit cars.
+
+## What you get
+
+- **results.csv**: per car, Cd, Cl, side force, CdA, frontal area, and drag, lift and power at the chosen speed.
+- **convergence.csv**: the forces through the run.
+- `<car>_cp.ply`: the surface coloured by pressure.
+- For the View: `<car>.tunnel.json.gz` (surface, streamlines, forces, placement), `<car>.field.bin.gz` (the mean flow) and `<car>.source.glb` (the original model).
+- **report.md**: the run in a page.
+
+From one run at 128 cells per length and 120 km/h: BMW X7 Cd 0.43 (CdA 1.37 m²), Mercedes W17 Cd 0.70, Ferrari SF-26 Cd 0.78.
+
+## Data and licences
+
+The car models come from [Sketchfab](https://sketchfab.com) and belong to their authors:
 
 - **2019 BMW X7 xDrive40i**: [Ddiaz Design](https://sketchfab.com/ddiaz-design)
 - **2021 Lamborghini Countach LPI 800-4**: [Lexyc16](https://sketchfab.com/Lexyc16)
 - **2026 Mercedes W17**: [Dave Love SketchFab](https://sketchfab.com/Tyler_Dave) ([model page](https://sketchfab.com/3d-models/2026-mercedes-w17-b806f1e70aa343219e7158169549b97b), CC-BY-4.0)
 - **2026 Ferrari SF-26**: [Dave Love SketchFab](https://sketchfab.com/Tyler_Dave)
 
-Please respect each model's licence on Sketchfab when sharing results.
+Respect each model's licence on Sketchfab when sharing results. NVIDIA Warp is Apache 2.0. The code of the blocks is EsaSim's.
+
+## Notes
+
+- This is a fast, coarse-grid digital twin for comparing designs, not certification CFD. Absolute Cd depends on the resolution: compare cars with each other at the same settings. On a validation case, the Ahmed body, the solver gives Cd 0.36 at 64 cells per length against about 0.29 measured.
+- Race-car wings and floors are thinner than the cells, so their downforce is underestimated.
+- The wheels do not turn, in the simulation or in the View: without rigged wheels a model's hubs and brakes cannot be told apart from its rims.
+- The smoke shows the time-averaged flow with the measured turbulence added as random motion; it is not a replay of the unsteady wake.
+- The first run on a machine installs the packages and compiles the Warp kernels, a few minutes more.
 
 <!-- esasim: files of the project -->
 
