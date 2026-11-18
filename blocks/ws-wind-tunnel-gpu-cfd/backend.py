@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 3 · worker block, Python: def run(ctx)
+# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 4 · worker block, Python: def run(ctx)
 # A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-18
@@ -19,6 +19,7 @@
 #   resolution  select    Resolution (cells per car length) = "128 (fine)" of 64 (quick) | 96 (standard) | 128 (fine) | 160 (…
 #   speed_kmh   number    Wind speed (km/h) = 120
 #   flow_time   number    Flow-through times = 8
+#   real_lengths textarea  Real lengths = ""
 #   length_axis select    Length axis (files) = "auto" of auto | x | y | z
 #   up_axis     select    Up axis (files) = "auto" of auto | z | y | x
 #   nose        select    Nose at = "auto" of auto | min | max
@@ -693,6 +694,14 @@ def run(ctx):
     u_lat = 0.1
     rho_air, nu_air = 1.204, 1.5e-5
     samples = [s.strip() for s in str(P.get("samples", "none")).replace(";", ",").split(",") if s.strip()]
+    real_len = {}
+    for line in str(P.get("real_lengths", "") or "").replace(";", "\n").splitlines():
+        if "=" in line:
+            key, val = line.rsplit("=", 1)
+            try:
+                real_len[key.strip().lower()] = float(val.strip().lower().replace("m", ""))
+            except ValueError:
+                ctx.log(f"Real lengths: cannot read '{line.strip()}' (write: part of the file name = metres)")
     device = "cuda" if wp.is_cuda_available() else "cpu"
     if device == "cuda":
         ctx.log(f"GPU: {wp.get_device('cuda').name}")
@@ -705,6 +714,17 @@ def run(ctx):
         try:
             v, f, M, note = _load_mesh(fi.path, P.get("length_axis", "auto"), P.get("up_axis", "auto"),
                                        P.get("nose", "auto"), P.get("units", "auto"))
+            Lf = float(v[:, 0].max())
+            match = [Lr for key, Lr in real_len.items() if key and key in fi.name.lower()]
+            if match and match[0] > 0:
+                k = match[0] / Lf
+                v = v * k
+                M = np.asarray(M, dtype=np.float64).copy()
+                M[:3, :] *= k
+                note += f"; rescaled from {Lf:.2f} m to its real length {match[0]:.2f} m"
+            elif Lf > 7.0:
+                note += (f"; it is {Lf:.1f} m long: if the model is drawn at the wrong size, give its real length in "
+                         f"Real lengths (Cd and Cl are right either way)")
             label = os.path.splitext(fi.name)[0]
             models.append(dict(id=_slug(label), label=label, v=v, f=f, source=fi.name, path=fi.path, M=M))
             ctx.log(f"Loaded {fi.name}: {len(f)} triangles; {note}")

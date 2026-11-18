@@ -7,7 +7,7 @@
     "side": "backend",
     "customizable": true,
     "summary": "A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.",
-    "help": "Wire car models (GLB/glTF, STL, OBJ, PLY, OFF; one car per file) into Car models, for example from a Dataset block. Each car is turned so its length runs along the wind and its wheels stand on the road: by default the longest side is the length, glTF files are Y-up (others Z-up), the taller end is the rear, and mm or cm are scaled to metres (set Length axis, Up axis, Nose at or Units to override). It is voxelized and simulated in turn: D3Q19 lattice Boltzmann with a regularized collision and a Smagorinsky LES model, a partial-slip wall model on the body, slip floor (like a rolling road), velocity inlet, pressure outlet with a sponge. Forces come from momentum exchange, averaged over the last part of the run. Outputs for the Wind tunnel view: <model>.tunnel.json.gz (surface pressure, streamlines, slices, history, transform), <model>.field.bin.gz (mean velocity, pressure and turbulence around the car, for the real-time smoke) and the original <model>.source.glb with its materials. Also results.csv, convergence.csv, surfaces coloured by Cp (PLY) and a report. Sample cars (fastback, notchback, estate, suv, pickup, van, sports, ahmed25, all) only when asked in Sample cars.",
+    "help": "Wire car models (GLB/glTF, STL, OBJ, PLY, OFF; one car per file) into Car models, for example from a Dataset block. Each car is turned so its length runs along the wind and its wheels stand on the road: by default the longest side is the length, glTF files are Y-up (others Z-up), the taller end is the rear, and mm or cm are scaled to metres (set Length axis, Up axis, Nose at or Units to override). Models drawn at the wrong size (common on Sketchfab) are rescaled with Real lengths: one line per car, a part of its file name = its real length in metres (countach = 4.87). Cd and Cl do not depend on the size; forces in newtons and power do. It is voxelized and simulated in turn: D3Q19 lattice Boltzmann with a regularized collision and a Smagorinsky LES model, a partial-slip wall model on the body, slip floor (like a rolling road), velocity inlet, pressure outlet with a sponge. Forces come from momentum exchange, averaged over the last part of the run. Outputs for the Wind tunnel view: <model>.tunnel.json.gz (surface pressure, streamlines, slices, history, transform), <model>.field.bin.gz (mean velocity, pressure and turbulence around the car, for the real-time smoke) and the original <model>.source.glb with its materials. Also results.csv, convergence.csv, surfaces coloured by Cp (PLY) and a report. Sample cars (fastback, notchback, estate, suv, pickup, van, sports, ahmed25, all) only when asked in Sample cars.",
     "inputs": [
         {
             "id": "models",
@@ -121,6 +121,13 @@
             "help": "How long each car is simulated, in car lengths of air passing by; the last ~55% is averaged"
         },
         {
+            "key": "real_lengths",
+            "label": "Real lengths",
+            "type": "textarea",
+            "default": "",
+            "help": "Models drawn at the wrong size: one line per car, a part of its file name = its real length in metres, e.g. countach = 4.87"
+        },
+        {
             "key": "length_axis",
             "label": "Length axis (files)",
             "type": "select",
@@ -215,6 +222,6 @@
         "fast-simplification"
     ],
     "esasim": {
-        "version": 3
+        "version": 4
     }
 }
