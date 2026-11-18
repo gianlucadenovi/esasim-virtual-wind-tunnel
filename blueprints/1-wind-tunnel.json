@@ -5,8 +5,8 @@
     },
     "name": "1 · Wind tunnel",
     "description": "Upload car models, run them through the GPU wind tunnel, compare drag and see the flow in 3D.",
-    "published_version": 1,
-    "updated": "2026-11-18 03:06:01",
+    "published_version": 2,
+    "updated": "2026-11-18 03:06:14",
     "graph": {
         "nodes": [
             {
@@ -65,16 +65,17 @@
                 "title": "Results"
             },
             {
-                "id": "conv",
+                "id": "bars",
                 "type": "chart",
                 "x": 800,
                 "y": 460,
                 "params": {
-                    "kind": "lines",
-                    "x": "t",
-                    "y": "cd"
+                    "kind": "bars",
+                    "x": "model",
+                    "y": "Cd, CdA_m2",
+                    "title": "Cd and CdA (m²) by model"
                 },
-                "title": "Drag coefficient over time"
+                "title": "Drag by model"
             },
             {
                 "id": "report",
@@ -142,13 +143,13 @@
                 }
             },
             {
-                "id": "tunnel.history>conv.data",
+                "id": "tunnel.results>bars.data",
                 "from": {
                     "node": "tunnel",
-                    "port": "history"
+                    "port": "results"
                 },
                 "to": {
-                    "node": "conv",
+                    "node": "bars",
                     "port": "data"
                 }
             },
