@@ -6,7 +6,7 @@
     "name": "1 · Wind tunnel",
     "description": "Upload car models, run them through the GPU wind tunnel, compare drag and see the flow in 3D.",
     "published_version": 3,
-    "updated": "2026-11-18 03:16:37",
+    "updated": "2026-11-18 03:16:54",
     "graph": {
         "nodes": [
             {
@@ -171,23 +171,23 @@
                 "view": {
                     "x": 0,
                     "y": 0,
-                    "w": 6,
+                    "w": 7,
                     "h": 21
                 },
                 "table": {
-                    "x": 6,
+                    "x": 7,
                     "y": 7,
                     "w": 5,
                     "h": 7
                 },
                 "bars": {
-                    "x": 6,
+                    "x": 7,
                     "y": 0,
                     "w": 5,
                     "h": 7
                 },
                 "report": {
-                    "x": 6,
+                    "x": 7,
                     "y": 14,
                     "w": 5,
                     "h": 7
