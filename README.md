@@ -1,5 +1,5 @@
 <!-- esasim: cover -->
-![Virtual wind tunnel](assets/cover.svg)
+![Virtual wind tunnel](assets/cover.jpg)
 <!-- /esasim: cover -->
 
 # Virtual wind tunnel

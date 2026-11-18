@@ -7,8 +7,8 @@
     "name": "Virtual wind tunnel",
     "description": "Upload car models (STL, OBJ, GLB) and study their aerodynamics in a GPU wind tunnel: lattice-Boltzmann CFD with NVIDIA Warp, surface pressure, streamlines, flow slices and drag compared side by side.",
     "type": "automotive",
-    "cover": "c2",
-    "cover_file": "assets/cover.svg",
+    "cover": "upload",
+    "cover_file": "assets/cover.jpg",
     "readme": "README.md",
     "blueprints": [
         {
