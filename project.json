@@ -21,7 +21,7 @@
     "blocks": [
         {
             "id": "ws-wind-tunnel-gpu-cfd",
-            "version": 5,
+            "version": 6,
             "name": "Wind tunnel (GPU CFD)"
         },
         {

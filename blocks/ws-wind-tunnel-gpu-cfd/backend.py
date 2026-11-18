@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 5 · worker block, Python: def run(ctx)
+# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 6 · worker block, Python: def run(ctx)
 # A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-18
@@ -536,8 +536,8 @@ def _load_mesh(path, length_axis, up_axis, nose, units):
     v = v * scale
     t = np.array([-v[:, 0].min(), -0.5 * (v[:, 1].max() + v[:, 1].min()), -v[:, 2].min()])
     v = v + t
-    if v[:, 0].max() < 0.05:
-        raise ValueError("model is empty or too small")
+    if v[:, 0].max() < 1e-6:
+        raise ValueError("the model is empty")
     M = np.eye(4)
     M[:3, :3] = scale * R
     M[:3, 3] = t
@@ -729,6 +729,14 @@ def run(ctx):
                 M = np.asarray(M, dtype=np.float64).copy()
                 M[:3, :] *= k
                 note += f"; rescaled from {Lf:.2f} m to its real length {match[0]:.2f} m"
+            elif Lf < 1.0:
+                # drawn far too small (common on Sketchfab): give it a car's length; Cd and Cl do not depend on it
+                k = 4.5 / Lf
+                v = v * k
+                M = np.asarray(M, dtype=np.float64).copy()
+                M[:3, :] *= k
+                note += (f"; it is only {Lf * 100:.1f} cm long, so it was scaled to 4.5 m: give its real length in Real lengths "
+                         f"for true forces (Cd and Cl are right either way)")
             elif Lf > 7.0:
                 note += (f"; it is {Lf:.1f} m long: if the model is drawn at the wrong size, give its real length in "
                          f"Real lengths (Cd and Cl are right either way)")
