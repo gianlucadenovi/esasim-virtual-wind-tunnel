@@ -21,7 +21,14 @@
             "sha256": "08e0fbbb7a131b7e05c7aa335aec9c7ac7174af780506285150fd5c09d396c66",
             "zip": "assets/virtual-wind-tunnel/car-models/2019_bmw_x7_xdrive40i.glb",
             "in": "repo"
+        },
+        {
+            "path": "virtual-wind-tunnel/car-models/2020_lamborghini_aventador_svj_63_roadster.glb",
+            "size": 18591116,
+            "sha256": "6acab1c693ca41f5e78060e8182fd416bea44c1702401996b4f5ea74f91271ca",
+            "zip": "assets/virtual-wind-tunnel/car-models/2020_lamborghini_aventador_svj_63_roadster.glb",
+            "in": "repo"
         }
     ],
-    "saved": "2026-11-18T22:08:51+00:00"
+    "saved": "2026-11-18T22:09:24+00:00"
 }
