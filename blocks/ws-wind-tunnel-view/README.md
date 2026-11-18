@@ -1,14 +1,14 @@
 # Wind tunnel view
 
-The wind tunnel in 3D: each car with its surface pressure, streamlines, moving particles and flow slices; pick a model, change the wind speed, compare drag; the flow forms live while the tunnel runs.
+The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, and realistic smoke from a wand you move in real time through the computed flow; drag compared across models.
 
-Wire the Wind tunnel block's Tunnel results into Tunnel and its Live telemetry into Live. Pick a model in the bar (or click a row of the table), colour the car by pressure (Cp) or paint, show streamlines and particles riding them, a centre or horizontal slice of the flow (speed or pressure), and move the Wind slider to see drag force and power at that speed (same Cd). Run tunnel starts a new run with the chosen resolution and wind speed (the Wind tunnel node's id is set in Tunnel node). Drag to orbit, right-drag or shift-drag to pan, scroll to zoom. While a run goes on, the side panel shows the centre-plane flow forming around the car and the running Cd.
+Wire the Wind tunnel block's Tunnel results into Tunnel and its live telemetry (through a Telemetry block) into Live. Pick a model; Car: Original shows its own materials (GLB/glTF), Pressure paints the surface pressure Cp on the same geometry, Paint shows a neutral finish. Smoke: a smoke wand stands in front of the car; drag its yellow handle (or use the sliders: jets, vertical/horizontal rake or a single point, height, side, spacing, distance ahead, density, slow motion, colour) and the smoke follows the run's time-averaged flow, interpolated wherever the wand is, and spreads where the flow is turbulent. Streamlines and centre or horizontal slices (speed or pressure) are there too; the Wind slider gives drag force and power at that speed. Run tunnel starts a new run with the chosen resolution and wind speed (the Wind tunnel node id is set in Tunnel node). Orbit with the mouse, right-drag to pan, scroll to zoom.
 
 An [EsaSim](https://esacode.com/) blueprint block: a view that draws in the browser, in JavaScript (`frontend.js`, `function render(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-wind-tunnel-view` · version 1 |
+| Block | `ws-wind-tunnel-view` · version 2 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 
@@ -16,7 +16,7 @@ An [EsaSim](https://esacode.com/) blueprint block: a view that draws in the brow
 
 | Port | Type | Description |
 |---|---|---|
-| `tunnel` Tunnel results | Files (gz, json) | <model>.tunnel.json.gz from the Wind tunnel block Several connections. |
+| `tunnel` Tunnel results | Files (gz, glb, gltf, json) | <model>.tunnel.json.gz, <model>.field.bin.gz and <model>.source.glb from the Wind tunnel block Several connections. |
 | `live` Live | Stream | The Wind tunnel block's live telemetry (channel tunnel) Several connections. Optional. |
 
 ## Settings
