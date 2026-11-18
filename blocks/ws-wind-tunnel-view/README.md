@@ -8,7 +8,7 @@ An [EsaSim](https://esacode.com/) blueprint block: a view that draws in the brow
 
 | | |
 |---|---|
-| Block | `ws-wind-tunnel-view` · version 3 |
+| Block | `ws-wind-tunnel-view` · version 4 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 

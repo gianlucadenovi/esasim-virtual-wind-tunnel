@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Wind tunnel view (ws-wind-tunnel-view) · version 3 · view, JavaScript: function render(ctx)
+// Wind tunnel view (ws-wind-tunnel-view) · version 4 · view, JavaScript: function render(ctx)
 // The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, and realistic smoke from a wand you move in real time through the computed flow; drag compared across models.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-18
@@ -12,7 +12,7 @@
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
-/* Wind tunnel view (v3): the cars of a Wind tunnel run in a 3D wind tunnel. A smoke wand you move in real time sends
+/* Wind tunnel view (v4): the cars of a Wind tunnel run in a 3D wind tunnel. A smoke wand you move in real time sends
  * smoke through the computed flow (interpolated from the simulation's mean velocity, spread by its turbulence).
  * Each car shows its own materials (GLB/glTF), its surface pressure, or a neutral paint, at the press of a button.
  * Inputs: tunnel (*.tunnel.json.gz, *.field.bin.gz and the original *.source.glb of each car) and live (telemetry). */
@@ -111,6 +111,8 @@ function render(ctx) {
     var i = Math.min(Math.floor(t), STOPS.length - 2), a = t - i, Q = STOPS[i], B = STOPS[i + 1];
     out[o] = Q[0] + (B[0] - Q[0]) * a; out[o + 1] = Q[1] + (B[1] - Q[1]) * a; out[o + 2] = Q[2] + (B[2] - Q[2]) * a;
   }
+  // the colour map is in sRGB; vertex colours are linear in three.js
+  function linearize(c) { for (var i = 0; i < c.length; i++) c[i] = Math.pow(c[i], 2.2); return c; }
   var tmp = [0, 0, 0];
   function rgb(t) { cmap(t, tmp, 0); return 'rgb(' + (tmp[0] * 255 | 0) + ',' + (tmp[1] * 255 | 0) + ',' + (tmp[2] * 255 | 0) + ')'; }
   $('ramp').style.background = 'linear-gradient(90deg,' + [0, .17, .33, .5, .67, .83, 1].map(rgb).join(',') + ')';
@@ -273,7 +275,7 @@ function render(ctx) {
   // ---------------------------------------------------------------- the car: original materials, pressure, paint
   var carGroup = new THREE.Group(); scene.add(carGroup);
   var paintMat = new THREE.MeshPhysicalMaterial({ color: 0xbfc5cc, roughness: 0.32, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.08 });
-  var cpMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.0, side: THREE.DoubleSide });
+  var cpMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.0, envMapIntensity: 0.35, side: THREE.DoubleSide });
   var car = null;
   function disposeTree(o) { o.traverse(function (q) { if (q.geometry && q.userData.own) q.geometry.dispose(); }); }
   function loadGLB(doc) {
@@ -317,7 +319,7 @@ function render(ctx) {
         v.fromBufferAttribute(pos, i); n.fromBufferAttribute(nr, i);
         cmap((sampleCp(F, v.x + n.x * off, v.y + n.y * off, v.z + n.z * off) + 1.5) / 2.5, c, i * 3);
       }
-      geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(linearize(c), 3));
       var mesh = new THREE.Mesh(geo, cpMat); mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.own = true;
       g.add(mesh);
     });
@@ -331,7 +333,7 @@ function render(ctx) {
     g.setAttribute('position', new THREE.BufferAttribute(doc._v, 3)); g.setIndex(new THREE.BufferAttribute(doc._f, 1)); g.computeVertexNormals();
     var c = new Float32Array(doc._cp.length * 3);
     for (var i = 0; i < doc._cp.length; i++) cmap((doc._cp[i] + 1.5) / 2.5, c, i * 3);
-    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(linearize(c), 3));
     var m = new THREE.Mesh(g, cpMat); m.castShadow = true; m.receiveShadow = true; m.userData.own = true;
     var grp = new THREE.Group(); grp.add(m); return grp;
   }
@@ -359,7 +361,7 @@ function render(ctx) {
     for (l = 0; l < nl; l++) for (j = so[l]; j < so[l + 1] - 1; j++) for (var e = 0; e < 2; e++) {
       var q = j + e; lp[k * 3] = sp[q * 3]; lp[k * 3 + 1] = sp[q * 3 + 1]; lp[k * 3 + 2] = sp[q * 3 + 2]; cmap(ss[q] / 1.5, lc, k * 3); k++;
     }
-    var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(lp, 3)); lg.setAttribute('color', new THREE.BufferAttribute(lc, 3));
+    var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(lp, 3)); lg.setAttribute('color', new THREE.BufferAttribute(linearize(lc), 3));
     lineObj = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6 }));
     extras.add(lineObj);
     slices = {};
