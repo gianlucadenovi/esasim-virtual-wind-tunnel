@@ -6,7 +6,7 @@
     "name": "1 · Wind tunnel",
     "description": "Upload car models, run them through the GPU wind tunnel, compare drag and see the flow in 3D.",
     "published_version": 3,
-    "updated": "2026-11-18 03:16:54",
+    "updated": "2026-11-18 03:48:33",
     "graph": {
         "nodes": [
             {
@@ -17,9 +17,9 @@
                 "params": {
                     "dataset": "20",
                     "version": "latest",
-                    "pattern": "*.stl, *.STL, *.obj, *.OBJ, *.glb, *.gltf, *.ply, *.off"
+                    "pattern": "*.glb, *.GLB, *.gltf, *.stl, *.STL, *.obj, *.OBJ, *.ply, *.off"
                 },
-                "title": "Car models (upload your STL/OBJ/GLB here)"
+                "title": "Car models (upload your GLB/STL/OBJ here)"
             },
             {
                 "id": "tunnel",
@@ -27,8 +27,8 @@
                 "x": 0,
                 "y": 160,
                 "params": {
-                    "samples": "auto",
-                    "resolution": "96 (standard)",
+                    "samples": "none",
+                    "resolution": "128 (fine)",
                     "speed_kmh": 120,
                     "flow_time": 8
                 },
