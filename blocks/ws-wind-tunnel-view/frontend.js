@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Wind tunnel view (ws-wind-tunnel-view) · version 6 · view, JavaScript: function render(ctx)
+// Wind tunnel view (ws-wind-tunnel-view) · version 7 · view, JavaScript: function render(ctx)
 // The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, on an asphalt belt in a gallery with a glossy mirroring floor; realistic smoke from a wand and flow slices you mo
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-18
@@ -12,7 +12,7 @@
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
-/* Wind tunnel view (v6): the cars of a Wind tunnel run in a wind gallery with a glossy, mirroring floor and an asphalt
+/* Wind tunnel view (v7): the cars of a Wind tunnel run in a wind gallery with a glossy, mirroring floor and an asphalt
  * belt under the car. A smoke wand you move in real time sends smoke through the computed flow (interpolated from the
  * simulation's mean velocity, spread by its turbulence, moving at the wind speed in slow motion); flow slices are
  * sampled live from the same field.
@@ -300,14 +300,24 @@ function render(ctx) {
     for (var i = 0; i < fs.length; i++) { var n = fs[i].name || String(fs[i].path || '').split('/').pop(); if (n === name) return fs[i]; }
     return null;
   }
-  function busy(t) { $('busy').style.display = t ? 'block' : 'none'; $('busy').textContent = t || ''; }
+  function busy(t) {
+    $('busy').style.display = t ? 'block' : 'none'; $('busy').textContent = t || '';
+    $('empty').style.display = t || st.order.length ? 'none' : '';
+  }
+  // files of a run that just ended may still be on their way from the worker: never wait on one for ever
+  function timed(p, ms) {
+    return new Promise(function (res, rej) {
+      var tm = setTimeout(function () { rej(new Error('timed out')); }, ms);
+      Promise.resolve(p).then(function (v) { clearTimeout(tm); res(v); }, function (e) { clearTimeout(tm); rej(e); });
+    });
+  }
 
   // ---------------------------------------------------------------- the flow field (for smoke and pressure)
   function loadField(doc) {
     if (doc._field) return Promise.resolve(doc._field);
     var F = doc.field, f = F && fileByName(F.file);
     if (!f) return Promise.resolve(null);
-    return Promise.resolve(ctx.files.buffer(f)).then(gunzipBuf).then(function (buf) {
+    return timed(ctx.files.buffer(f), 120000).then(gunzipBuf).then(function (buf) {
       var nx = F.n[0], ny = F.n[1], nz = F.n[2], N = nx * ny * nz;
       var fld = {
         nx: nx, ny: ny, nz: nz, x0: F.origin[0], y0: F.origin[1], z0: F.origin[2], h: F.h,
@@ -356,7 +366,7 @@ function render(ctx) {
     var f = doc.source_file && fileByName(doc.source_file);
     if (!f || !A.GLTFLoader) { doc._glb = null; return Promise.resolve(null); }
     busy('Loading ' + doc.label + '…');
-    return Promise.resolve(ctx.files.buffer(f)).then(function (buf) {
+    return timed(ctx.files.buffer(f), 240000).then(function (buf) {
       return new Promise(function (res, rej) {
         var gl = new A.GLTFLoader();
         // pictures inside the file through <img>: the frame may not fetch the blob: URLs the loader makes
@@ -375,7 +385,7 @@ function render(ctx) {
       var ex = (g.parser && g.parser.json && g.parser.json.asset && g.parser.json.asset.extras) || {};
       doc._credit = ex;
       doc._glb = holder; busy(''); return holder;
-    }).catch(function (e) { console.warn('wind tunnel: GLB', e); busy(''); doc._glb = null; return null; });
+    }).catch(function (e) { console.warn('wind tunnel: GLB', e); busy(''); doc._glb = String(e && e.message).indexOf('timed out') >= 0 ? undefined : null; return null; });
   }
   // a copy of the original geometry painted with the pressure (or plain paint), in the tunnel's coordinates
   function pressureCopy(doc, holder, F) {
@@ -663,7 +673,7 @@ function render(ctx) {
   function forces(doc) { var V = st.wind / 3.6, q = 0.5 * (doc.rho_air || 1.204) * V * V; return { drag: doc.cd * q * doc.area, pow: doc.cd * q * doc.area * V / 1000 }; }
   function numbers() {
     var doc = st.docs[st.cur];
-    $('empty').style.display = st.order.length ? 'none' : '';
+    $('empty').style.display = st.order.length || $('busy').style.display === 'block' ? 'none' : '';
     $('wandPanel').style.display = st.order.length && st.smoke ? '' : 'none';
     $('windv').textContent = st.wind + ' km/h';
     if (!doc) { $('name').textContent = ''; $('sub').textContent = ''; $('credit').innerHTML = ''; return; }
@@ -708,7 +718,7 @@ function render(ctx) {
   function select(id) {
     var doc = st.docs[id]; if (!doc) return;
     var token = ++selToken, first = st._shown == null;
-    st.cur = id; save();
+    st.cur = id; st._shownDoc = doc; save();
     if (car) {
       if (car.cpObj) { carGroup.remove(car.cpObj); disposeTree(car.cpObj); }
       if (car.original) carGroup.remove(car.original);
@@ -734,27 +744,45 @@ function render(ctx) {
   }
 
   // ---------------------------------------------------------------- inputs
-  var loading = {};
+  var loading = {}, retryTimer = null, retries = 0;
   function load() {
     var files = ((ctx.input('tunnel') || {}).files || []).filter(function (f) { return /\.tunnel\.json(\.gz)?$/i.test(f.name || f.path || ''); });
+    var done = 0, failed = 0, got = {};
     var pending = files.map(function (f) {
       var key = (f.name || f.path) + ':' + (f.size || '') + ':' + (f.id || f.url || f.path || '');
-      if (!loading[key]) loading[key] = Promise.resolve(ctx.files.buffer(f)).then(gunzipBuf).then(function (b) { var d = JSON.parse(new TextDecoder().decode(b)); d._key = key; return d; })
+      if (!loading[key]) loading[key] = timed(ctx.files.buffer(f), 90000).then(gunzipBuf).then(function (b) { var d = JSON.parse(new TextDecoder().decode(b)); d._key = key; return d; })
         .catch(function (e) { console.warn('wind tunnel: cannot read', f.name, e); delete loading[key]; return null; });
-      return loading[key];
+      return loading[key].then(function (d) {
+        done++; if (!d) failed++; else got[key] = d;
+        if (!st.order.length && files.length) busy('Loading the results (' + done + ' of ' + files.length + ')…');
+        if (d) show(files.map(function (g) { return got[(g.name || g.path) + ':' + (g.size || '') + ':' + (g.id || g.url || g.path || '')]; }));
+        return d;
+      });
     });
-    if (files.length && !st.order.length) busy('Loading the results…');
+    if (files.length && !st.order.length) busy('Loading the results (0 of ' + files.length + ')…');
+    if (!files.length) { st.docs = {}; st.order = []; $('model').innerHTML = ''; busy(''); numbers(); }
     Promise.all(pending).then(function (docs) {
-      busy('');
-      var nd = {}, order = [];
-      docs.forEach(function (d) { if (d && d.format === 'esasim.windtunnel/1') { nd[d.id] = st.docs[d.id] && st.docs[d.id]._key === d._key ? st.docs[d.id] : d; if (order.indexOf(d.id) < 0) order.push(d.id); } });
-      var changed = order.join('|') !== st.order.join('|') || order.some(function (id) { return nd[id] !== st.docs[id]; });
-      if (!changed) return;
-      st.docs = nd; st.order = order;
-      $('model').innerHTML = order.map(function (id) { return '<option value="' + esc(id) + '">' + esc(nd[id].label) + '</option>'; }).join('');
-      if (order.length) select(st.cur && nd[st.cur] ? st.cur : order[0]); else numbers();
+      show(docs);
+      if (failed && retries < 20) {               // still on its way from the worker: try again shortly
+        retries++;
+        busy(st.order.length ? '' : 'Fetching the results from the worker…');
+        clearTimeout(retryTimer); retryTimer = setTimeout(load, 4000);
+      } else { retries = 0; busy(''); numbers(); }
     });
     liveUpdate();
+  }
+  // shows the results read so far (in the order of the files), keeping the cars already on screen
+  function show(docs) {
+    var nd = {}, order = [];
+    docs.forEach(function (d) { if (d && d.format === 'esasim.windtunnel/1') { nd[d.id] = st.docs[d.id] && st.docs[d.id]._key === d._key ? st.docs[d.id] : d; if (order.indexOf(d.id) < 0) order.push(d.id); } });
+    if (!order.length) return;
+    var changed = order.join('|') !== st.order.join('|') || order.some(function (id) { return nd[id] !== st.docs[id]; });
+    if (!changed) return;
+    st.docs = nd; st.order = order;
+    $('model').innerHTML = order.map(function (id) { return '<option value="' + esc(id) + '">' + esc(nd[id].label) + '</option>'; }).join('');
+    busy('');
+    if (st.cur && nd[st.cur]) { if (st._shownDoc !== nd[st.cur]) select(st.cur); else { $('model').value = st.cur; numbers(); } }
+    else select(order[0]);
   }
   function liveUpdate() {
     var s = ((ctx.input('live') || {}).stream || []).filter(function (i) { return i.channel === 'tunnel' && i.data; });
