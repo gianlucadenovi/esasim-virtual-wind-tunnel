@@ -1,5 +1,5 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Wind tunnel view (ws-wind-tunnel-view) · version 2 · view, JavaScript: function render(ctx)
+// Wind tunnel view (ws-wind-tunnel-view) · version 3 · view, JavaScript: function render(ctx)
 // The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, and realistic smoke from a wand you move in real time through the computed flow; drag compared across models.
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-18
@@ -12,7 +12,7 @@
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
-/* Wind tunnel view (v2): the cars of a Wind tunnel run in a 3D wind tunnel. A smoke wand you move in real time sends
+/* Wind tunnel view (v3): the cars of a Wind tunnel run in a 3D wind tunnel. A smoke wand you move in real time sends
  * smoke through the computed flow (interpolated from the simulation's mean velocity, spread by its turbulence).
  * Each car shows its own materials (GLB/glTF), its surface pressure, or a neutral paint, at the press of a button.
  * Inputs: tunnel (*.tunnel.json.gz, *.field.bin.gz and the original *.source.glb of each car) and live (telemetry). */
@@ -499,8 +499,8 @@ function render(ctx) {
     var d = st.docs[st.cur], F = d && d._field;
     if (!d || !F || !st.smoke) { alive = 0; sg.setDrawRange(0, 0); return; }
     var L = d.L, Uv = L / (st.slow / 8);            // on screen the air crosses one car length in slow/8 seconds
-    var TL = 0.06 * L / Uv, base = 0.012 * L * 0.025, s0 = 0.011 * L * (0.7 + 0.3 * st.dens / 100);
-    var life = 3.2 * L / Uv, rate = (140 + 5.2 * st.dens) * 12 / st.slow, col = SMOKE[st.scol];
+    var TL = 0.06 * L / Uv, base = 0.012 * L * 0.025, s0 = 0.017 * L * (0.7 + 0.3 * st.dens / 100);
+    var life = 3.2 * L / Uv, rate = (220 + 8 * st.dens) * 12 / st.slow, col = SMOKE[st.scol];
     emitAcc += dt * rate;
     var ne = Math.floor(emitAcc); emitAcc -= ne;
     for (var e = 0; e < ne; e++) for (var z = 0; z < nozzles.length && alive < MAXP; z++) {
@@ -517,7 +517,7 @@ function render(ctx) {
       if (!sample(F, x, y, zz, smp)) { if (x < F.x0) { smp[0] = 1; smp[1] = smp[2] = smp[3] = smp[4] = 0; } else { kill(n); continue; } }
       var mx = x + 0.5 * dt * smp[0] * Uv, my = y + 0.5 * dt * smp[1] * Uv, mz = zz + 0.5 * dt * smp[2] * Uv;
       if (!sample(F, mx, my, mz, smp2)) { smp2[0] = smp[0]; smp2[1] = smp[1]; smp2[2] = smp[2]; smp2[3] = smp[3]; smp2[4] = 0; }
-      var sig = smp2[3] * Uv * 0.85 + base * Uv;
+      var sig = Math.max(0, smp2[3] - 0.035) * Uv * 0.9 + base * Uv; // background noise of the run does not spread the smoke
       for (var c = 0; c < 3; c++) pVel[n * 3 + c] += -pVel[n * 3 + c] * dt / TL + sig * sq * gauss();
       var nx = x + dt * (smp2[0] * Uv + pVel[n * 3]), ny = y + dt * (smp2[1] * Uv + pVel[n * 3 + 1]), nz = zz + dt * (smp2[2] * Uv + pVel[n * 3 + 2]);
       if (nz < 0.004 * L) { nz = 0.004 * L; pVel[n * 3 + 2] = Math.abs(pVel[n * 3 + 2]); }
@@ -527,11 +527,11 @@ function render(ctx) {
       pPos[n * 3] = nx; pPos[n * 3 + 1] = ny; pPos[n * 3 + 2] = nz;
       pAge[n] += dt / pLife[n];
       pSpr[n] += smp2[3] * dt * Uv;
-      pSize[n] = s0 * (1 + 2.2 * pAge[n]) + 0.35 * pSpr[n] * 0.12;
+      pSize[n] = s0 * (1 + 1.8 * pAge[n]) + 0.05 * pSpr[n];
       if (!col) { var spd = Math.sqrt(smp2[0] * smp2[0] + smp2[1] * smp2[1] + smp2[2] * smp2[2]); cmap(spd / 1.5, pCol, n * 3); }
       if (pAge[n] >= 1) kill(n);
     }
-    smokeMat.uniforms.uOpacity.value = (0.05 + 0.1 * st.dens / 100) * (1 + 0.6 * (12 - Math.min(12, st.slow)) / 12);
+    smokeMat.uniforms.uOpacity.value = (0.03 + 0.06 * st.dens / 100) * (1 + 0.6 * (12 - Math.min(12, st.slow)) / 12);
     sg.setDrawRange(0, alive);
     aPos.needsUpdate = true; aCol.needsUpdate = true; aAge.needsUpdate = true; aSize.needsUpdate = true;
   }
