@@ -1,14 +1,14 @@
 # Wind tunnel view
 
-The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, on a moving asphalt road with spinning wheels; realistic smoke from a wand and flow slices you move in real time;
+The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, on an asphalt belt in a gallery with a glossy mirroring floor; realistic smoke from a wand and flow slices you mo
 
-Wire the Wind tunnel block's Tunnel results into Tunnel and its live telemetry (through a Telemetry block) into Live. Pick a model; Car: Original shows its own materials (GLB/glTF), Pressure paints the surface pressure Cp on the same geometry, Paint shows a neutral finish. Smoke: a smoke wand stands in front of the car; drag its yellow handle (or use the sliders: jets, vertical/horizontal rake or a single point, height, side, spacing, distance ahead, density, slow motion, colour) and the smoke follows the run's time-averaged flow, interpolated wherever the wand is, and spreads where the flow is turbulent. Slice: a side, top or cross-section plane of air speed, pressure or turbulence, sampled from the flow in real time and moved with its slider. Rolling road: the asphalt moves under the car at the wind speed (as seen in slow motion) and the wheels spin; wheels are found from where the tyres touch the road. Streamlines are there too; the Wind slider gives drag force and power at that speed. Run tunnel starts a new run with the chosen resolution and wind speed (the Wind tunnel node id is set in Tunnel node). Orbit with the mouse, right-drag to pan, scroll to zoom.
+Wire the Wind tunnel block's Tunnel results into Tunnel and its live telemetry (through a Telemetry block) into Live. Pick a model; Car: Original shows its own materials (GLB/glTF), Pressure paints the surface pressure Cp on the same geometry, Paint shows a neutral finish. Smoke: a smoke wand stands in front of the car; drag its yellow handle (or use the sliders: jets, vertical/horizontal rake or a single point, height, side, spacing, distance ahead, density, slow motion, colour) and the smoke follows the run's time-averaged flow, interpolated wherever the wand is, and spreads where the flow is turbulent. The smoke moves at the Wind speed slowed down by Slow motion (×1 is real time). Slice: a side, top or cross-section plane of air speed, pressure or turbulence, sampled from the flow in real time and moved with its slider. Streamlines are there too; the Wind slider gives drag force and power at that speed. Run tunnel starts a new run with the chosen resolution and wind speed (the Wind tunnel node id is set in Tunnel node). Orbit with the mouse, right-drag to pan, scroll to zoom.
 
 An [EsaSim](https://esacode.com/) blueprint block: a view that draws in the browser, in JavaScript (`frontend.js`, `function render(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-wind-tunnel-view` · version 5 |
+| Block | `ws-wind-tunnel-view` · version 6 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 

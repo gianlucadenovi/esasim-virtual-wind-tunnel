@@ -51,7 +51,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 ### Workspace blocks it uses
 
 - [Wind tunnel (GPU CFD)](blocks/ws-wind-tunnel-gpu-cfd) · version 4
-- [Wind tunnel view](blocks/ws-wind-tunnel-view) · version 5
+- [Wind tunnel view](blocks/ws-wind-tunnel-view) · version 6
 
 The data the blueprints read (Car models) stays in EsaSim.
 

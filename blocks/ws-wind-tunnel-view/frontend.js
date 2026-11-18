@@ -1,6 +1,6 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Wind tunnel view (ws-wind-tunnel-view) · version 5 · view, JavaScript: function render(ctx)
-// The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, on a moving asphalt road with spinning wheels; realistic smoke from a wand and flow slices you move in real time;
+// Wind tunnel view (ws-wind-tunnel-view) · version 6 · view, JavaScript: function render(ctx)
+// The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, on an asphalt belt in a gallery with a glossy mirroring floor; realistic smoke from a wand and flow slices you mo
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 // Saved: 2026-11-18
 //
@@ -12,10 +12,11 @@
 // EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 // ── end of EsaSim block header ────────────────────────────────────────
 
-/* Wind tunnel view (v5): the cars of a Wind tunnel run in a wind gallery: a moving asphalt road, spinning wheels,
- * a smoke wand you move in real time through the computed flow (interpolated from the simulation's mean velocity,
- * spread by its turbulence) and flow slices sampled live from the same field. Each car shows its own materials
- * (GLB/glTF), its surface pressure, or a neutral paint, at the press of a button.
+/* Wind tunnel view (v6): the cars of a Wind tunnel run in a wind gallery with a glossy, mirroring floor and an asphalt
+ * belt under the car. A smoke wand you move in real time sends smoke through the computed flow (interpolated from the
+ * simulation's mean velocity, spread by its turbulence, moving at the wind speed in slow motion); flow slices are
+ * sampled live from the same field.
+ * Each car shows its own materials (GLB/glTF), its surface pressure, or a neutral paint, at the press of a button.
  * Inputs: tunnel (*.tunnel.json.gz, *.field.bin.gz and the original *.source.glb of each car) and live (telemetry). */
 function render(ctx) {
   var THREE = ctx.THREE, A = THREE.addons || {}, el = ctx.el, P = ctx.params || {};
@@ -49,6 +50,7 @@ function render(ctx) {
     '.wt .title .big div span{display:block;font-size:10.5px;opacity:.6;text-transform:uppercase;letter-spacing:.4px}',
     '.wt .title .big div b{font-size:22px;font-variant-numeric:tabular-nums}',
     '.wt .credit{position:absolute;right:14px;top:96px;font-size:11px;opacity:.7;text-align:right;max-width:320px;text-shadow:0 1px 2px #000}',
+    '.wt .credit a{color:#93c5fd}',
     '.wt .busy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(14,18,24,.85);padding:8px 14px;border-radius:9px;display:none}',
     '.wt .side{width:330px;max-width:40%;border-left:1px solid rgba(255,255,255,.08);background:#0a0d12;display:flex;flex-direction:column;overflow:auto}',
     '.wt .sec{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)}',
@@ -74,7 +76,7 @@ function render(ctx) {
     '<div class="bar">' +
     '<div class="chip"><span class="lab">Model</span><select data-k="model"></select></div>' +
     '<div class="chip"><span class="lab">Car</span><button data-k="mOrig">Original</button><button data-k="mCp">Pressure</button><button data-k="mPaint">Paint</button></div>' +
-    '<div class="chip"><button data-k="smoke" class="on">Smoke</button><button data-k="lines">Streamlines</button><button data-k="road" class="on">Rolling road</button></div>' +
+    '<div class="chip"><button data-k="smoke" class="on">Smoke</button><button data-k="lines">Streamlines</button></div>' +
     '<div class="chip"><span class="lab">Slice</span><select data-k="slice"><option value="off">off</option><option value="xz">side</option><option value="xy">top</option><option value="yz">cross</option></select><select data-k="field"><option value="speed">speed</option><option value="cp">pressure</option><option value="turb">turbulence</option></select><input type="range" data-k="spos" min="0" max="1000" step="1" title="Move the slice"><b data-k="sposv" style="min-width:58px;text-align:right"></b></div>' +
     '<div class="chip"><span class="lab">Wind</span><input type="range" data-k="wind" min="20" max="350" step="5"><b data-k="windv"></b></div>' +
     '<div class="chip" data-k="runchip"><button class="go" data-k="run">▶ Run tunnel</button><select data-k="res"><option>64 (quick)</option><option>96 (standard)</option><option selected>128 (fine)</option><option>160 (very fine)</option></select></div>' +
@@ -91,6 +93,7 @@ function render(ctx) {
     '<div class="row"><span>Ahead</span><input type="range" data-k="wx" min="0" max="1000" step="1"><b data-k="wxv"></b></div>' +
     '<div class="row"><span>Density</span><input type="range" data-k="dens" min="20" max="200" step="1"><b data-k="densv"></b></div>' +
     '<div class="row"><span>Slow motion</span><input type="range" data-k="slow" min="1" max="60" step="1"><b data-k="slowv"></b></div>' +
+    '<div class="row muted" style="justify-content:flex-end;font-size:11px" data-k="slowr"></div>' +
     '<div class="row"><span>Colour</span><select data-k="scol" style="flex:1"><option value="yellow">yellow</option><option value="white">white</option><option value="speed">by speed</option></select></div>' +
     '</div>' +
     '<div class="legend" data-k="legend"><div class="lab" data-k="legT"></div><div class="ramp" data-k="ramp"></div><div class="ticks" data-k="ticks"></div></div>' +
@@ -112,7 +115,6 @@ function render(ctx) {
     var i = Math.min(Math.floor(t), STOPS.length - 2), a = t - i, Q = STOPS[i], B = STOPS[i + 1];
     out[o] = Q[0] + (B[0] - Q[0]) * a; out[o + 1] = Q[1] + (B[1] - Q[1]) * a; out[o + 2] = Q[2] + (B[2] - Q[2]) * a;
   }
-  // the colour map is in sRGB; vertex colours are linear in three.js
   function linearize(c) { for (var i = 0; i < c.length; i++) c[i] = Math.pow(c[i], 2.2); return c; }
   var tmp = [0, 0, 0];
   function rgb(t) { cmap(t, tmp, 0); return 'rgb(' + (tmp[0] * 255 | 0) + ',' + (tmp[1] * 255 | 0) + ',' + (tmp[2] * 255 | 0) + ')'; }
@@ -125,13 +127,13 @@ function render(ctx) {
     slice: S.slice || 'off', field: S.field || 'speed', wind: S.wind || 120, res: S.res || '128 (fine)',
     jets: S.jets || 5, rake: S.rake || 'v', wz: S.wz != null ? S.wz : 0.24, wy: S.wy != null ? S.wy : 0.5, sp: S.sp || 130,
     wx: S.wx != null ? S.wx : 0.4, dens: S.dens || 100, slow: S.slow || 12, scol: S.scol || 'yellow',
-    road: S.road !== false, spos: S.spos || {}
+    spos: S.spos || {}
   };
   function save() {
     if (!ctx.saveState) return;
     ctx.saveState({ cur: st.cur, mode: st.mode, smoke: st.smoke, lines: st.lines, slice: st.slice, field: st.field, wind: st.wind, res: st.res,
       jets: st.jets, rake: st.rake, wz: st.wz, wy: st.wy, sp: st.sp, wx: st.wx, dens: st.dens, slow: st.slow, scol: st.scol,
-      road: st.road, spos: st.spos });
+      spos: st.spos });
   }
 
   // ---------------------------------------------------------------- renderer, tunnel room, lights
@@ -160,24 +162,27 @@ function render(ctx) {
   }
   function noise(g, w, h, a) { var d = g.getImageData(0, 0, w, h); for (var i = 0; i < d.data.length; i += 4) { var n = (Math.random() - 0.5) * a; d.data[i] += n; d.data[i + 1] += n; d.data[i + 2] += n; } g.putImageData(d, 0, 0); }
   var room = new THREE.Group(); scene.add(room);
-  // asphalt: aggregate speckles on a dark binder, used as colour and as bump map
+  // the road: a dark asphalt belt (like a rolling-road treadmill, standing still), a little bigger than the car, set into the tunnel floor
   var asphaltTex = canvasTex(1024, 1024, function (g, w, h) {
-    g.fillStyle = '#323337'; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#1b1c1f'; g.fillRect(0, 0, w, h);
     var d = g.getImageData(0, 0, w, h), px = d.data;
-    for (var i = 0; i < px.length; i += 4) { var n = (Math.random() - 0.5) * 34; px[i] += n; px[i + 1] += n; px[i + 2] += n * 1.05; }
+    for (var i = 0; i < px.length; i += 4) { var n = (Math.random() - 0.5) * 16; px[i] += n; px[i + 1] += n; px[i + 2] += n; }
     g.putImageData(d, 0, 0);
-    for (var k = 0; k < 26000; k++) {
-      var x = Math.random() * w, y = Math.random() * h, r = Math.random() * 1.9 + 0.4, c = Math.random();
-      g.fillStyle = c < 0.55 ? 'rgba(150,150,152,' + (0.25 + Math.random() * 0.45) + ')' : c < 0.85 ? 'rgba(18,18,20,.7)' : 'rgba(110,100,92,.5)';
+    for (var k = 0; k < 9000; k++) {
+      var x = Math.random() * w, y = Math.random() * h, r = Math.random() * 1.3 + 0.3, c = Math.random();
+      g.fillStyle = c < 0.25 ? 'rgba(105,105,108,' + (0.08 + Math.random() * 0.14) + ')' : c < 0.85 ? 'rgba(8,8,9,.55)' : 'rgba(62,58,54,.35)';
       g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
     }
-    for (var m = 0; m < 14; m++) {
-      g.fillStyle = 'rgba(0,0,0,' + (0.04 + Math.random() * 0.05) + ')';
+    for (var m = 0; m < 10; m++) {
+      g.fillStyle = 'rgba(0,0,0,' + (0.05 + Math.random() * 0.06) + ')';
       g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 60 + Math.random() * 200, 20 + Math.random() * 90, Math.random() * 3, 0, 6.2832); g.fill();
     }
   }, [1, 1]);
-  var laneTex = canvasTex(512, 16, function (g, w, h) { g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(240,240,232,.92)'; g.fillRect(0, 2, w * 0.4, h - 4); }, [1, 1]);
-  var edgeTex = canvasTex(64, 16, function (g, w, h) { g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(240,240,232,.9)'; g.fillRect(0, 2, w, h - 4); }, [1, 1]);
+  // the facility floor: polished dark epoxy panels
+  var floorTex = canvasTex(512, 512, function (g, w, h) {
+    g.fillStyle = '#2c2f35'; g.fillRect(0, 0, w, h); noise(g, w, h, 5);
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.strokeRect(1, 1, w - 2, h - 2);
+  }, [1, 1]);
   var wallTex = canvasTex(512, 512, function (g, w, h) {
     g.fillStyle = '#26292e'; g.fillRect(0, 0, w, h); noise(g, w, h, 10);
     g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 4;
@@ -185,25 +190,70 @@ function render(ctx) {
     for (var y = 0; y <= h; y += 256) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
     g.fillStyle = 'rgba(255,255,255,.035)'; for (var q = 0; q < 6; q++) g.fillRect(20 + q * 80, 40, 30, 8);
   }, [1, 1]);
-  var roadTiles = 4.0, scrolls = [];
-  function buildRoom(L, H) {
+  // ---- a glossy floor that mirrors the scene a little: the scene is drawn from a mirrored camera into a texture
+  // (half size) each frame, and the floor adds it, more at grazing angles
+  var reflRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType || THREE.UnsignedByteType });
+  var reflCam = new THREE.PerspectiveCamera(), reflTM = { value: new THREE.Matrix4() }, noRefl = [], floorMesh = null;
+  var _f = new THREE.Vector3(), _u = new THREE.Vector3(), _t = new THREE.Vector3();
+  function glossyFloorMaterial(map) {
+    var m = new THREE.MeshStandardMaterial({ map: map, roughness: 0.3, metalness: 0.0, envMapIntensity: 0.45 });
+    m.onBeforeCompile = function (sh) {
+      sh.uniforms.tRefl = { value: reflRT.texture }; sh.uniforms.reflTM = reflTM; sh.uniforms.reflStr = { value: 0.3 };
+      sh.vertexShader = 'uniform mat4 reflTM;\nvarying vec4 vRefl;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vRefl = reflTM * (modelMatrix * vec4(transformed, 1.0));');
+      var out = sh.fragmentShader.indexOf('#include <opaque_fragment>') >= 0 ? '#include <opaque_fragment>' : '#include <output_fragment>';
+      sh.fragmentShader = 'uniform sampler2D tRefl;\nuniform float reflStr;\nvarying vec4 vRefl;\n' + sh.fragmentShader.replace(out,
+        '{ vec2 ruv = vRefl.xy / vRefl.w; vec3 rc = vec3(0.0);\n' +
+        '  for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) rc += texture2D(tRefl, ruv + vec2(float(i), float(j)) * 0.0016).rgb;\n' +
+        '  rc /= 25.0; float cs = clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0);\n' +
+        '  outgoingLight += rc * reflStr * mix(0.35, 1.0, pow(1.0 - cs, 3.0)); }\n' + out);
+    };
+    return m;
+  }
+  function renderReflection() {
+    if (!floorMesh) return;
+    var w = Math.max(16, canvas.width >> 1), h = Math.max(16, canvas.height >> 1);
+    if (reflRT.width !== w || reflRT.height !== h) reflRT.setSize(w, h);
+    camera.updateMatrixWorld();
+    _f.set(0, 0, -1).applyQuaternion(camera.quaternion); _u.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    _f.z = -_f.z; _u.z = -_u.z;
+    reflCam.position.set(camera.position.x, camera.position.y, -camera.position.z);
+    reflCam.up.copy(_u); reflCam.lookAt(_t.copy(reflCam.position).add(_f));
+    reflCam.projectionMatrix.copy(camera.projectionMatrix);
+    if (reflCam.projectionMatrixInverse) reflCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+    reflCam.updateMatrixWorld();
+    reflTM.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(reflCam.projectionMatrix).multiply(reflCam.matrixWorldInverse);
+    noRefl.forEach(function (o) { o.visible = false; });
+    var au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+    var sv = smokePts.visible, xv = extrasLive.visible; smokePts.visible = false; extrasLive.visible = false;
+    renderer.setRenderTarget(reflRT); renderer.clear(); renderer.render(scene, reflCam); renderer.setRenderTarget(null);
+    smokePts.visible = sv; extrasLive.visible = xv;
+    renderer.shadowMap.autoUpdate = au;
+    noRefl.forEach(function (o) { o.visible = true; });
+  }
+  var beltTile = 2.0;
+  function buildRoom(L, H, W) {
     while (room.children.length) { var o = room.children.pop(); if (o.geometry) o.geometry.dispose(); }
-    scrolls = [];
     var X0 = -2.6 * L, X1 = 4.2 * L, Y = Math.max(1.9 * L, 7), Z = Math.max(1.3 * L, 4 * H);
-    // the road under the car moves at the wind speed (a rolling road): the car seems to drive
-    var road = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 2 * Y), new THREE.MeshStandardMaterial({ map: asphaltTex, bumpMap: asphaltTex, bumpScale: 0.6, roughness: 0.93, metalness: 0 }));
-    asphaltTex.repeat.set((X1 - X0) / roadTiles, 2 * Y / roadTiles);
-    road.position.set((X0 + X1) / 2, 0, -0.004); road.receiveShadow = true; room.add(road);
-    scrolls.push({ tex: asphaltTex, period: roadTiles });
-    // lane markings: dashed lines between the lanes, solid lines at the edges
-    var lane = 3.6, lm = new THREE.MeshStandardMaterial({ map: laneTex, transparent: true, roughness: 0.7, depthWrite: false });
-    laneTex.repeat.set((X1 - X0) / 12, 1);
-    var em = new THREE.MeshStandardMaterial({ map: edgeTex, transparent: true, roughness: 0.7, depthWrite: false });
-    [-1, 1].forEach(function (sg) {
-      var dl = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 0.14), lm); dl.position.set((X0 + X1) / 2, sg * lane / 2, -0.002); dl.receiveShadow = true; room.add(dl);
-      var el2 = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 0.18), em); el2.position.set((X0 + X1) / 2, sg * lane * 1.5, -0.002); el2.receiveShadow = true; room.add(el2);
+    var floor = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, 2 * Y), glossyFloorMaterial(floorTex));
+    floorTex.repeat.set((X1 - X0) / 3, 2 * Y / 3);
+    floor.position.set((X0 + X1) / 2, 0, -0.012); floor.receiveShadow = true; room.add(floor); floorMesh = floor; noRefl = [floor];
+    // the belt: 15% longer than the car and about half a metre wider on each side
+    var bl = 1.3 * L, bw = (W || 0.45 * L) + 2 * Math.max(0.35, 0.08 * L), bx = 0.5 * L;
+    var belt = new THREE.Mesh(new THREE.PlaneGeometry(bl, bw), new THREE.MeshStandardMaterial({ map: asphaltTex, bumpMap: asphaltTex, bumpScale: 0.35, roughness: 0.95, metalness: 0 }));
+    asphaltTex.repeat.set(bl / beltTile, bw / beltTile);
+    belt.position.set(bx, 0, -0.002); belt.receiveShadow = true; room.add(belt); noRefl.push(belt);
+    // the steel frame around the belt and the rollers at its ends
+    var steel = new THREE.MeshStandardMaterial({ color: 0x7c828b, roughness: 0.35, metalness: 0.85 });
+    var fw = Math.max(0.06, 0.02 * L);
+    [-1, 1].forEach(function (s) {
+      var side = new THREE.Mesh(new THREE.BoxGeometry(bl + 0.084 + 2 * fw, fw, 0.012), steel); side.position.set(bx, s * (bw / 2 + fw / 2), -0.006); side.receiveShadow = true; room.add(side); noRefl.push(side);
+      var end = new THREE.Mesh(new THREE.BoxGeometry(fw, bw, 0.012), steel); end.position.set(bx + s * (bl / 2 + 0.042 + fw / 2), 0, -0.006); end.receiveShadow = true; room.add(end); noRefl.push(end);
+      // a roller at each end of the belt
+      var rg = new THREE.CylinderGeometry(0.03, 0.03, bw, 24);
+      var rt = canvasTex(64, 8, function (g, w, h) { g.fillStyle = '#9aa1aa'; g.fillRect(0, 0, w, h); g.fillStyle = '#4b5058'; for (var i = 0; i < w; i += 16) g.fillRect(i, 0, 6, h); }, [1, 1]);
+      var roller = new THREE.Mesh(rg, new THREE.MeshStandardMaterial({ map: rt, roughness: 0.3, metalness: 0.9 }));
+      roller.position.set(bx + s * (bl / 2 + 0.012), 0, -0.024); roller.castShadow = false; room.add(roller); noRefl.push(roller);
     });
-    scrolls.push({ tex: laneTex, period: 12 });
     var wm = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9, metalness: 0.05, side: THREE.BackSide });
     wallTex.repeat.set((X1 - X0) / 3, Z / 3);
     var box = new THREE.Mesh(new THREE.BoxGeometry(X1 - X0, 2 * Y, Z * 2), wm);
@@ -252,7 +302,7 @@ function render(ctx) {
   }
   function busy(t) { $('busy').style.display = t ? 'block' : 'none'; $('busy').textContent = t || ''; }
 
-  // ---------------------------------------------------------------- the flow field (for smoke, slices and pressure)
+  // ---------------------------------------------------------------- the flow field (for smoke and pressure)
   function loadField(doc) {
     if (doc._field) return Promise.resolve(doc._field);
     var F = doc.field, f = F && fileByName(F.file);
@@ -299,7 +349,7 @@ function render(ctx) {
   var carGroup = new THREE.Group(); scene.add(carGroup);
   var paintMat = new THREE.MeshPhysicalMaterial({ color: 0xbfc5cc, roughness: 0.32, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.08 });
   var cpMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.0, envMapIntensity: 0.35, side: THREE.DoubleSide });
-  var car = null;
+  var car = null; // { original: Object3D|null, cpObj: Object3D }
   function disposeTree(o) { o.traverse(function (q) { if (q.geometry && q.userData.own) q.geometry.dispose(); }); }
   function loadGLB(doc) {
     if (doc._glb !== undefined) return Promise.resolve(doc._glb);
@@ -322,7 +372,8 @@ function render(ctx) {
       holder.add(g.scene);
       holder.updateMatrixWorld(true);
       holder.traverse(function (q) { if (q.isMesh) { q.castShadow = true; q.receiveShadow = true; } });
-      doc._credit = (g.parser && g.parser.json && g.parser.json.asset && g.parser.json.asset.extras) || {};
+      var ex = (g.parser && g.parser.json && g.parser.json.asset && g.parser.json.asset.extras) || {};
+      doc._credit = ex;
       doc._glb = holder; busy(''); return holder;
     }).catch(function (e) { console.warn('wind tunnel: GLB', e); busy(''); doc._glb = null; return null; });
   }
@@ -331,7 +382,7 @@ function render(ctx) {
     var g = new THREE.Group(), v = new THREE.Vector3(), n = new THREE.Vector3();
     holder.updateMatrixWorld(true);
     holder.traverse(function (q) {
-      if (!q.isMesh || !q.geometry || !q.geometry.attributes.position || q.userData.wheel) return;
+      if (!q.isMesh || !q.geometry || !q.geometry.attributes.position) return;
       var mt = Array.isArray(q.material) ? q.material[0] : q.material;
       if (mt && (mt.transparent || mt.alphaTest > 0)) return; // decals and glass overlays: leave out
       var geo = q.geometry.clone(), pos = geo.attributes.position;
@@ -360,90 +411,6 @@ function render(ctx) {
     var m = new THREE.Mesh(g, cpMat); m.castShadow = true; m.receiveShadow = true; m.userData.own = true;
     var grp = new THREE.Group(); grp.add(m); return grp;
   }
-  // ---- wheels: found where the tyres touch the road; the triangles inside each tyre's cylinder are split off into
-  // their own meshes, which spin about the axle with the rolling road (works without named parts)
-  function detectWheels(root, L) {
-    var pts = [], v = new THREE.Vector3();
-    root.updateMatrixWorld(true);
-    root.traverse(function (q) {
-      if (!q.isMesh || !q.geometry || !q.geometry.attributes.position) return;
-      var p = q.geometry.attributes.position, step = Math.max(1, Math.floor(p.count / 30000));
-      for (var i = 0; i < p.count; i += step) { v.fromBufferAttribute(p, i).applyMatrix4(q.matrixWorld); pts.push(v.x, v.y, v.z); }
-    });
-    var n = pts.length / 3, contact = [], i;
-    for (i = 0; i < n; i++) if (pts[i * 3 + 2] < 0.006 * L) contact.push(i);
-    if (contact.length < 8) return [];
-    var xs = contact.map(function (k) { return pts[k * 3]; }).sort(function (a, b) { return a - b; });
-    var gap = 0, cut = 0;
-    for (i = 1; i < xs.length; i++) if (xs[i] - xs[i - 1] > gap) { gap = xs[i] - xs[i - 1]; cut = (xs[i] + xs[i - 1]) / 2; }
-    if (gap < 0.25 * L) return [];
-    var wheels = [];
-    [[-Infinity, cut], [cut, Infinity]].forEach(function (rx) {
-      [-1, 1].forEach(function (side) {
-        var c = contact.filter(function (k) { var x = pts[k * 3], y = pts[k * 3 + 1]; return x > rx[0] && x < rx[1] && y * side > 0; });
-        if (c.length < 2) return;
-        var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-        c.forEach(function (k) { x0 = Math.min(x0, pts[k * 3]); x1 = Math.max(x1, pts[k * 3]); y0 = Math.min(y0, pts[k * 3 + 1]); y1 = Math.max(y1, pts[k * 3 + 1]); });
-        var xc = (x0 + x1) / 2, yc = (y0 + y1) / 2, hw = Math.max(0.5 * (y1 - y0) * 1.3, 0.02 * L), rs = [];
-        // the radius from the tyre's chord at a few heights: r = (c^2 + h^2) / 2h; the smallest is the least disturbed
-        [0.015, 0.025, 0.035, 0.045].forEach(function (hf) {
-          var hgt = hf * L, cmax = 0;
-          for (var k = 0; k < n; k++) {
-            var dz = pts[k * 3 + 2] - hgt, dx = Math.abs(pts[k * 3] - xc);
-            if (Math.abs(dz) < 0.003 * L && Math.abs(pts[k * 3 + 1] - yc) < hw && dx < 0.09 * L && dx > cmax) cmax = dx;
-          }
-          if (cmax > 0) rs.push((cmax * cmax + hgt * hgt) / (2 * hgt));
-        });
-        if (!rs.length) return;
-        var r = Math.max(0.03 * L, Math.min(0.12 * L, Math.min.apply(null, rs)));
-        wheels.push({ x: xc, y: yc, r: r, hw: hw, angle: 0 });
-      });
-    });
-    return wheels.length >= 2 ? wheels : [];
-  }
-  function splitWheels(root, wheels, target) {
-    var out = [], v = new THREE.Vector3();
-    if (!wheels.length) return out;
-    root.updateMatrixWorld(true);
-    var meshes = [];
-    root.traverse(function (q) { if (q.isMesh && q.geometry && q.geometry.attributes.position && !Array.isArray(q.material) && !q.userData.wheel) meshes.push(q); });
-    meshes.forEach(function (q) {
-      var geo = q.geometry, p = geo.attributes.position, idx = geo.index ? geo.index.array : null, nt = (idx ? idx.length : p.count) / 3;
-      var wIn = new Int8Array(p.count);
-      for (var i = 0; i < p.count; i++) {
-        v.fromBufferAttribute(p, i).applyMatrix4(q.matrixWorld); wIn[i] = -1;
-        for (var w = 0; w < wheels.length; w++) {
-          var W2 = wheels[w], dx = v.x - W2.x, dz = v.z - W2.r;
-          if (Math.abs(v.y - W2.y) < W2.hw * 1.25 && dx * dx + dz * dz < W2.r * W2.r * 1.1) { wIn[i] = w; break; }
-        }
-      }
-      var body = [], per = wheels.map(function () { return []; }), any = false;
-      for (var t = 0; t < nt; t++) {
-        var a = idx ? idx[t * 3] : t * 3, b = idx ? idx[t * 3 + 1] : t * 3 + 1, c = idx ? idx[t * 3 + 2] : t * 3 + 2;
-        if (wIn[a] >= 0 && wIn[a] === wIn[b] && wIn[a] === wIn[c]) { per[wIn[a]].push(a, b, c); any = true; } else body.push(a, b, c);
-      }
-      if (!any) return;
-      var IA = p.count > 65535 ? Uint32Array : Uint16Array;
-      var g2 = geo.clone(); g2.setIndex(new THREE.BufferAttribute(new IA(body), 1)); g2.clearGroups(); q.geometry = g2; q.userData.own = true;
-      per.forEach(function (tris, w) {
-        if (!tris.length) return;
-        var gw = geo.clone(); gw.setIndex(new THREE.BufferAttribute(new IA(tris), 1)); gw.clearGroups();
-        var m = new THREE.Mesh(gw, q.material); m.castShadow = true; m.receiveShadow = true;
-        m.matrixAutoUpdate = false; m.userData = { wheel: true, own: true, base: q.matrixWorld.clone(), w: w };
-        m.matrix.copy(q.matrixWorld); target.add(m); out.push(m);
-      });
-    });
-    return out;
-  }
-  var spinM = new THREE.Matrix4(), tA = new THREE.Matrix4(), tB = new THREE.Matrix4();
-  function spinWheels(list, wheels) {
-    list.forEach(function (m) {
-      var W2 = wheels[m.userData.w];
-      tA.makeTranslation(W2.x, 0, W2.r); spinM.makeRotationY(W2.angle); tB.makeTranslation(-W2.x, 0, -W2.r);
-      m.matrix.copy(tA).multiply(spinM).multiply(tB).multiply(m.userData.base); m.matrixWorldNeedsUpdate = true;
-    });
-  }
-
   function showMode() {
     if (!car) return;
     var hasOrig = !!car.original;
@@ -452,8 +419,6 @@ function render(ctx) {
     if (car.original) car.original.visible = mode === 'original';
     car.cpObj.visible = mode !== 'original';
     car.cpObj.traverse(function (q) { if (q.isMesh) q.material = mode === 'paint' ? paintMat : cpMat; });
-    car.origWheels.forEach(function (m) { m.visible = mode === 'original'; });
-    car.cpWheels.forEach(function (m) { m.visible = mode !== 'original'; m.material = mode === 'paint' ? paintMat : cpMat; });
     ['mOrig', 'mCp', 'mPaint'].forEach(function (k, i) { $(k).classList.toggle('on', mode === ['original', 'pressure', 'paint'][i]); });
     legend();
   }
@@ -562,7 +527,7 @@ function render(ctx) {
   var nozzleMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.45, metalness: 0.6 });
   var handle = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0x6b5500, roughness: 0.4 }));
   scene.add(handle);
-  var nozzles = [];
+  var nozzles = []; // positions in metres
   function wandGeometry() {
     var d = st.docs[st.cur]; if (!d) return;
     var L = d.L;
@@ -581,6 +546,7 @@ function render(ctx) {
       var cyl = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.3, len, 12), nozzleMat);
       cyl.rotation.z = -Math.PI / 2; cyl.position.set(p[0] - len / 2, p[1], p[2]); cyl.castShadow = true; wand.add(cyl);
     });
+    // the bar holding the nozzles, down to the floor (or across for a horizontal rake)
     var a = nozzles[0], b = nozzles[nozzles.length - 1], bx = xw - len;
     if (st.rake === 'h') {
       var span = Math.abs(b[1] - a[1]) + 2 * r;
@@ -603,7 +569,9 @@ function render(ctx) {
     $('wzv').textContent = fmt(p.z, 2) + ' m'; $('wyv').textContent = fmt(p.y, 2) + ' m';
     $('spv').textContent = fmt(st.sp / 1000 * d.L * 0.25 * 100, 0) + ' cm'; $('wxv').textContent = fmt(-p.x, 2) + ' m';
     $('densv').textContent = st.dens + '%'; $('slowv').textContent = '×' + st.slow;
+    $('slowr').textContent = 'smoke at ' + fmt(st.wind / st.slow, st.wind / st.slow < 10 ? 1 : 0) + ' km/h on screen';
   }
+  // drag the handle in the plane of the wand
   var ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), dragging = false, plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0), hit = new THREE.Vector3();
   function setMouse(e) { var r = canvas.getBoundingClientRect(); mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(mouse, camera); }
   canvas.addEventListener('pointerdown', function (e) {
@@ -633,13 +601,15 @@ function render(ctx) {
     pCol[i * 3] = pCol[j * 3]; pCol[i * 3 + 1] = pCol[j * 3 + 1]; pCol[i * 3 + 2] = pCol[j * 3 + 2];
     pAge[i] = pAge[j]; pLife[i] = pLife[j]; pSize[i] = pSize[j]; pSpr[i] = pSpr[j];
   }
+  function screenSpeed() { return st.wind / 3.6 / st.slow; }
   var SMOKE = { yellow: [0.98, 0.86, 0.16], white: [0.93, 0.94, 0.96] };
   function stepSmoke(dt) {
     var d = st.docs[st.cur], F = d && d._field;
     if (!d || !F || !st.smoke) { alive = 0; sg.setDrawRange(0, 0); return; }
-    var L = d.L, Uv = L / (st.slow / 8);            // on screen the air crosses one car length in slow/8 seconds
+    var L = d.L, Uv = screenSpeed();                // the wind speed, slowed down by the slow-motion factor
     var TL = 0.06 * L / Uv, base = 0.012 * L * 0.025, s0 = 0.014 * L * (0.7 + 0.3 * st.dens / 100);
-    var life = 3.2 * L / Uv, rate = (560 + 20 * st.dens) * 12 / st.slow * quality, col = SMOKE[st.scol];
+    var life = 3.2 * L / Uv, rate = (560 + 20 * st.dens) * 1.5 * Uv / L * quality, col = SMOKE[st.scol];
+    // emit
     emitAcc += dt * rate;
     var ne = Math.floor(emitAcc); emitAcc -= ne;
     for (var e = 0; e < ne; e++) for (var z = 0; z < nozzles.length && alive < MAXP; z++) {
@@ -660,7 +630,7 @@ function render(ctx) {
       for (var c = 0; c < 3; c++) pVel[n * 3 + c] += -pVel[n * 3 + c] * dt / TL + sig * sq * gauss();
       var nx = x + dt * (smp2[0] * Uv + pVel[n * 3]), ny = y + dt * (smp2[1] * Uv + pVel[n * 3 + 1]), nz = zz + dt * (smp2[2] * Uv + pVel[n * 3 + 2]);
       if (nz < 0.004 * L) { nz = 0.004 * L; pVel[n * 3 + 2] = Math.abs(pVel[n * 3 + 2]); }
-      if (sample(F, nx, ny, nz, smp) && smp[4] > 0.45) {
+      if (sample(F, nx, ny, nz, smp) && smp[4] > 0.45) { // into the car: stay outside, lose the push
         pVel[n * 3] *= -0.3; pVel[n * 3 + 1] *= -0.3; pVel[n * 3 + 2] *= -0.3; nx = x + dt * smp2[0] * Uv * 0.5; ny = y; nz = zz;
       }
       pPos[n * 3] = nx; pPos[n * 3 + 1] = ny; pPos[n * 3 + 2] = nz;
@@ -670,7 +640,7 @@ function render(ctx) {
       if (!col) { var spd = Math.sqrt(smp2[0] * smp2[0] + smp2[1] * smp2[1] + smp2[2] * smp2[2]); cmap(spd / 1.5, pCol, n * 3); }
       if (pAge[n] >= 1) kill(n);
     }
-    smokeMat.uniforms.uOpacity.value = (0.014 + 0.03 * st.dens / 100) / Math.sqrt(quality) * (1 + 0.6 * (12 - Math.min(12, st.slow)) / 12);
+    smokeMat.uniforms.uOpacity.value = (0.014 + 0.03 * st.dens / 100) / Math.sqrt(quality) * (1 + 0.6 * Math.max(0, Math.min(1, (Uv - 0.67 * L) / (2 * L))));
     sg.setDrawRange(0, alive);
     aPos.needsUpdate = true; aCol.needsUpdate = true; aAge.needsUpdate = true; aSize.needsUpdate = true;
   }
@@ -711,7 +681,7 @@ function render(ctx) {
       return '<tr class="row' + (id === st.cur ? ' sel' : '') + '" data-id="' + esc(id) + '"><td>' + esc(d.label) + '<div class="barc" style="width:' + (100 * a / maxA).toFixed(0) + '%;background:' + rgb(a / maxA * 0.85) + '"></div></td><td>' + fmt(d.cd, 3) + '</td><td>' + fmt(d.cl, 3) + '</td><td>' + fmt(a, 3) + '</td><td>' + fmt(ff.drag, 0) + '</td><td>' + fmt(ff.pow, 1) + '</td></tr>';
     }).join('');
     Array.prototype.forEach.call($('table').querySelectorAll('tr.row'), function (tr) { tr.onclick = function () { select(tr.getAttribute('data-id')); }; });
-    $('about').innerHTML = 'Lattice Boltzmann LES on the GPU · ' + doc.grid.join('×') + ' cells (' + fmt(doc.dx * 100, 1) + ' cm) · ' + doc.flow_time + ' flow-through times · Re ' + Number(doc.re_phys).toExponential(1) + '. The smoke and the slices follow the time-averaged flow of the run, interpolated in real time; the smoke spreads with the measured turbulence. Forces are averaged over the last part of the run; the wind slider scales them (same Cd). Drag to orbit, right-drag to pan, scroll to zoom.';
+    $('about').innerHTML = 'Lattice Boltzmann LES on the GPU · ' + doc.grid.join('×') + ' cells (' + fmt(doc.dx * 100, 1) + ' cm) · ' + doc.flow_time + ' flow-through times · Re ' + Number(doc.re_phys).toExponential(1) + '. The smoke and the slices follow the time-averaged flow of the run, interpolated in real time; the smoke spreads with the measured turbulence and moves at the wind speed, slowed down by the slow-motion factor. Forces are averaged over the last part of the run; the wind slider scales them (same Cd). Drag to orbit, right-drag to pan, scroll to zoom.';
     hist(doc);
   }
   function hist(doc) {
@@ -742,12 +712,10 @@ function render(ctx) {
     if (car) {
       if (car.cpObj) { carGroup.remove(car.cpObj); disposeTree(car.cpObj); }
       if (car.original) carGroup.remove(car.original);
-      car.origWheels.forEach(function (m) { carGroup.remove(m); });
-      car.cpWheels.forEach(function (m) { carGroup.remove(m); m.geometry.dispose(); });
       car = null;
     }
     alive = 0;
-    if (st._roomL !== doc.L) { buildRoom(doc.L, doc.H); st._roomL = doc.L; }
+    if (st._roomL !== doc.L) { buildRoom(doc.L, doc.H, doc.W); st._roomL = doc.L; }
     if (first || st._shown !== id) frameCar(doc);
     st._shown = id;
     buildExtras(doc);
@@ -758,12 +726,9 @@ function render(ctx) {
       if (token !== selToken) return;
       var F = r[0], orig = r[1];
       busy('');
-      car = { original: orig, cpObj: orig && F ? pressureCopy(doc, orig, F) : docMesh(doc), origWheels: [], cpWheels: [] };
+      car = { original: orig, cpObj: orig && F ? pressureCopy(doc, orig, F) : docMesh(doc) };
       if (orig) carGroup.add(orig);
       carGroup.add(car.cpObj);
-      if (!doc._wheels) doc._wheels = detectWheels(orig || car.cpObj, doc.L);
-      if (orig) { if (!doc._origWheels) doc._origWheels = splitWheels(orig, doc._wheels, carGroup); else doc._origWheels.forEach(function (m) { carGroup.add(m); }); car.origWheels = doc._origWheels; }
-      car.cpWheels = splitWheels(car.cpObj, doc._wheels, carGroup);
       showMode(); wandGeometry(); numbers(); drawSlice();
     });
   }
@@ -828,10 +793,8 @@ function render(ctx) {
   $('field').onchange = function () { st.field = this.value; drawSlice(); legend(); save(); };
   $('spos').oninput = function () { st.spos[st.slice] = +this.value / 1000; drawSlice(); };
   $('spos').onchange = function () { save(); };
-  $('road').onclick = function () { st.road = !st.road; this.classList.toggle('on', st.road); save(); };
-  $('road').classList.toggle('on', st.road);
   $('model').onchange = function () { select(this.value); };
-  $('wind').oninput = function () { st.wind = +this.value; numbers(); legend(); save(); };
+  $('wind').oninput = function () { st.wind = +this.value; numbers(); legend(); labels(); save(); };
   $('res').onchange = function () { st.res = this.value; save(); };
   [['jets', 'jets', 1], ['wz', 'wz', 1000], ['wy', 'wy', 1000], ['sp', 'sp', 1], ['wx', 'wx', 1000], ['dens', 'dens', 1], ['slow', 'slow', 1]].forEach(function (c) {
     var inp = $(c[0]); inp.value = c[2] === 1000 ? st[c[1]] * 1000 : st[c[1]];
@@ -859,20 +822,13 @@ function render(ctx) {
     if (!el.isConnected) return;
     requestAnimationFrame(frame);
     var real = Math.min(0.25, (now - lastT) / 1000); lastT = now;
-    var nsub = Math.max(1, Math.ceil(real / (1 / 30))), dt = real / nsub, tq = performance.now();
+    var dcur = st.docs[st.cur], vstep = dcur ? Math.ceil(real * screenSpeed() / (0.03 * dcur.L)) : 1;
+    var nsub = Math.min(16, Math.max(1, Math.ceil(real / (1 / 30)), vstep)), dt = real / nsub, tq = performance.now();
     for (var si = 0; si < nsub; si++) stepSmoke(dt);
     var cost = performance.now() - tq;                     // keep the frame rate: fewer particles on slow machines
     quality = cost > 14 ? Math.max(0.25, quality * 0.93) : Math.min(1, quality * 1.01);
-    var d = st.docs[st.cur];
-    if (d && st.road) {
-      var Uv = d.L / (st.slow / 8);                        // the road runs at the speed the smoke sees
-      scrolls.forEach(function (s3) { s3.tex.offset.x = (s3.tex.offset.x - real * Uv / s3.period) % 1; });
-      if (car && d._wheels && d._wheels.length) {
-        d._wheels.forEach(function (W2) { W2.angle = (W2.angle - real * Uv / W2.r) % (2 * Math.PI); });
-        spinWheels(car.origWheels, d._wheels); spinWheels(car.cpWheels, d._wheels);
-      }
-    }
     if (controls) controls.update();
+    renderReflection();
     renderer.render(scene, camera);
   }
 
