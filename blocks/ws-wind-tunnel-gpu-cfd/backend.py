@@ -1,34 +1,16 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 1 · worker block, Python: def run(ctx)
-# A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and flow slices for each STL/OBJ/GLB car.
+# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 2 · worker block, Python: def run(ctx)
+# A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-18
 #
 # Inputs   ctx.inputs["id"] is a list of files: .path .name .size .read_text() .read_json()
-#   models      Files (stl, obj, glb, gltf, ply, off) Car models · several · optional · One car per file; the length along X with the nose at the smallest X and Z up by default (see the settings)
+#   (none)
 # Outputs  ctx.output("id", "name.ext") is the path to write; ctx.write_json / ctx.write_text
-#   tunnel      Files (gz)                Tunnel results (View) · <model>.tunnel.json.gz (esasim.windtunnel/1) for the Wind tunnel view
-#   results     Table (csv)               Results · results.csv: one row per car: Cd, Cl, Cs, frontal area, CdA, drag, lift, drag power
-#   history     Table (csv)               Convergence · convergence.csv: model, t (flow-through times), cd, cl
-#   surfaces    Files (ply)               Pressure surfaces · <model>_cp.ply: the surface coloured by Cp, with a cp vertex property
-#   models      Files (stl)               Sample cars · The built-in cars used, as STL
-#   report      Text (md)                 Report
 #   telemetry   Live telemetry            ctx.telemetry("channel", data) while it runs
 # Settings ctx.params["key"]
-#   samples     text      Sample cars = "auto"
-#   resolution  select    Resolution (cells per car length) = "96 (standard)" of 64 (quick) | 96 (standard) | 128 (fine) | 16…
-#   speed_kmh   number    Wind speed (km/h) = 120
-#   flow_time   number    Flow-through times = 8
-#   length_axis select    Length axis (files) = "x" of x | y | z
-#   up_axis     select    Up axis (files) = "z" of z | y | x
-#   nose        select    Nose at = "min" of min | max
-#   units       select    Units (files) = "auto" of auto | m | cm | mm | in
-#   reynolds    number    LES Reynolds number cap = 1000000
-#   smagorinsky number    Smagorinsky constant = 0.17
-#   wall_slip   number    Wall slip (0 no-slip, 1 free-slip) = 0.85
-#   max_triangles number    Triangles in the View = 160000
-# Runs on  NVIDIA GPU. Return a dict to fill the "result" output.
-# Packages warp-lang, numpy, scipy, scikit-image, trimesh, fast-simplification (installed by the worker with pip when missing)
+#   (none)
+# Runs on  Any worker. Return a dict to fill the "result" output.
 # EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 # ── end of EsaSim block header ────────────────────────────────────────
 
