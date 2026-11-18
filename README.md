@@ -144,5 +144,7 @@ The files the project's views draw with (3D models, textures, sounds), in [asset
 - [virtual-wind-tunnel/car-models/2019_bmw_x7_xdrive40i.glb](assets/virtual-wind-tunnel/car-models/2019_bmw_x7_xdrive40i.glb) · 11 MB
 - [virtual-wind-tunnel/car-models/2020_lamborghini_aventador_svj_63_roadster.glb](assets/virtual-wind-tunnel/car-models/2020_lamborghini_aventador_svj_63_roadster.glb) · 18 MB
 - `virtual-wind-tunnel/car-models/2026_ferrari_sf-26.glb` (release file asset--virtual-wind-tunnel--car-models--2026_ferrari_sf-26.glb) · 30 MB
+- [virtual-wind-tunnel/car-models/README.md](assets/virtual-wind-tunnel/car-models/README.md) · 814 B
+- `virtual-wind-tunnel/car-models/lamborghini_countach_lpi_800-4.glb` (release file asset--virtual-wind-tunnel--car-models--lamborghini_countach_lpi_800-4.glb) · 37 MB
 
 Keys pasted in blocks (secret settings) are not saved here, nor are the team and the results of runs.

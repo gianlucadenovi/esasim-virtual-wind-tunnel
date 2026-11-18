@@ -37,7 +37,23 @@
             "in": "release",
             "tag": "esasim-files",
             "asset": "asset--virtual-wind-tunnel--car-models--2026_ferrari_sf-26.glb"
+        },
+        {
+            "path": "virtual-wind-tunnel/car-models/README.md",
+            "size": 814,
+            "sha256": "d1123f940f730db883568802be2b3d83ee37533e7cb922f9a7b3c40703d0a37d",
+            "zip": "assets/virtual-wind-tunnel/car-models/README.md",
+            "in": "repo"
+        },
+        {
+            "path": "virtual-wind-tunnel/car-models/lamborghini_countach_lpi_800-4.glb",
+            "size": 39200552,
+            "sha256": "c5b0f7e5a26a21d048f729aee5a5aba5026ad50d04074eaa4aafb0abd65d8b76",
+            "zip": "assets/virtual-wind-tunnel/car-models/lamborghini_countach_lpi_800-4.glb",
+            "in": "release",
+            "tag": "esasim-files",
+            "asset": "asset--virtual-wind-tunnel--car-models--lamborghini_countach_lpi_800-4.glb"
         }
     ],
-    "saved": "2026-11-18T22:10:24+00:00"
+    "saved": "2026-11-18T22:11:37+00:00"
 }
