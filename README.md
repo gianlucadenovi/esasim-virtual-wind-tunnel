@@ -108,6 +108,7 @@ The car models come from [Sketchfab](https://sketchfab.com) and belong to their 
 - **2019 BMW X7 xDrive40i**: [Ddiaz Design](https://sketchfab.com/ddiaz-design)
 - **2020 Lamborghini Aventador SVJ 63 Roadster**: [Ddiaz Design](https://sketchfab.com/ddiaz-design)
 - **2021 Lamborghini Countach LPI 800-4**: [VTX](https://sketchfab.com/VTX_car)
+- **1985 DeLorean DMC-12 Time Machine**: [VTX](https://sketchfab.com/VTX_car)
 - **2026 Ferrari SF-26**: [Dave Love SketchFab](https://sketchfab.com/Tyler_Dave)
 
 Respect each model's licence on Sketchfab when sharing results. NVIDIA Warp is Apache 2.0. The code of the blocks is EsaSim's.
