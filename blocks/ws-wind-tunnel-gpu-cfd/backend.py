@@ -1,8 +1,8 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 6 · worker block, Python: def run(ctx)
-# A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.
+# Wind tunnel (GPU CFD) (ws-wind-tunnel-gpu-cfd) · version 7 · worker block, Python: def run(ctx)
+# A virtual wind tunnel for car models: lattice-Boltzmann LES on an NVIDIA GPU (Warp) or on all the cores of a CPU (Numba) gives drag, lift, surface pressure, streamlines and the flow field for real-tim
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
-# Saved: 2026-11-18
+# Saved: 2026-11-19
 #
 # Inputs   ctx.inputs["id"] is a list of files: .path .name .size .read_text() .read_json()
 #   models      Files (glb, gltf, stl, obj, ply, off) Car models · several · optional · One car per file; orientation and units are found automatically (see the settings)
@@ -15,6 +15,7 @@
 #   report      Text (md)                 Report
 #   telemetry   Live telemetry            ctx.telemetry("channel", data) while it runs
 # Settings ctx.params["key"]
+#   accelerator select    Processor = "auto" of auto | NVIDIA GPU | CPU
 #   samples     text      Sample cars = "none"
 #   resolution  select    Resolution (cells per car length) = "128 (fine)" of 64 (quick) | 96 (standard) | 128 (fine) | 160 (…
 #   speed_kmh   number    Wind speed (km/h) = 120
@@ -28,8 +29,8 @@
 #   smagorinsky number    Smagorinsky constant = 0.17
 #   wall_slip   number    Wall slip (0 no-slip, 1 free-slip) = 0.85
 #   max_triangles number    Triangles in the View (STL/OBJ) = 160000
-# Runs on  NVIDIA GPU. Return a dict to fill the "result" output.
-# Packages warp-lang, numpy, scipy, scikit-image, trimesh, fast-simplification (installed by the worker with pip when missing)
+# Runs on  Any worker, NVIDIA GPU. Return a dict to fill the "result" output.
+# Packages warp-lang, numba, numpy, scipy, scikit-image, trimesh, fast-simplification (installed by the worker with pip when missing)
 # EsaSim rewrites these lines from the block's definition each time it is saved: change the definition, not them.
 # ── end of EsaSim block header ────────────────────────────────────────
 
@@ -480,6 +481,288 @@ class Tunnel:
         return self.rho_m.numpy() / n, self.u_m.numpy() / n, self.u2_m.numpy() / n
 
 
+# ---------------------------------------------------------------- the same solver on the CPU (all cores, Numba)
+# Warp runs its CPU kernels on one thread; this is the GPU kernel above line by line, parallel over x with Numba.
+_NB = None
+
+
+def _numba_kernels():
+    global _NB
+    if _NB is not None:
+        return _NB
+    import numba as nb
+
+    @nb.njit(parallel=True, fastmath=True)
+    def step(f_in, f_out, flag, uw, CX, CY, CZ, Wt, OPP_, MZ_, u_in, tau0, cs2, wall_damp, sponge, acc,
+             rho_m, u_m, u2_m):
+        nx, ny, nz = flag.shape
+        for x in nb.prange(nx):
+            f = np.empty(19, np.float64)
+            for y in range(ny):
+                for z in range(nz):
+                    fl = flag[x, y, z]
+                    if fl == 1:
+                        continue
+                    uwx = 0.0
+                    uwy = 0.0
+                    uwz = 0.0
+                    if fl == 2:
+                        rp = 0.0
+                        px = 0.0
+                        py = 0.0
+                        pz = 0.0
+                        for j in range(19):
+                            fj = f_in[j, x, y, z]
+                            rp += fj
+                            px += fj * CX[j]
+                            py += fj * CY[j]
+                            pz += fj * CZ[j]
+                        r = max(rp, 0.2)
+                        upx = px / r
+                        upy = py / r
+                        upz = pz / r
+                        nnx = uw[x, y, z, 0]
+                        nny = uw[x, y, z, 1]
+                        nnz = uw[x, y, z, 2]
+                        d = upx * nnx + upy * nny + upz * nnz
+                        uwx = (upx - d * nnx) * wall_damp
+                        uwy = (upy - d * nny) * wall_damp
+                        uwz = (upz - d * nnz) * wall_damp
+                    rho = 0.0
+                    jx = 0.0
+                    jy = 0.0
+                    jz = 0.0
+                    for i in range(19):
+                        sx = x - CX[i]
+                        sy = y - CY[i]
+                        sz = z - CZ[i]
+                        if sz < 0:
+                            # road: slip floor
+                            sxx = min(max(sx, 0), nx - 1)
+                            syy = sy
+                            if syy < 0:
+                                syy = ny - 1
+                            elif syy >= ny:
+                                syy = 0
+                            val = f_in[MZ_[i], sxx, syy, z]
+                        else:
+                            k = i
+                            if sy < 0:
+                                sy = ny - 1
+                            elif sy >= ny:
+                                sy = 0
+                            if sz >= nz:
+                                sz = z
+                                k = MZ_[k]
+                            if sx < 0:
+                                # velocity inlet
+                                cu = 3.0 * CX[i] * u_in
+                                val = Wt[i] * (1.0 + cu + 0.5 * cu * cu - 1.5 * u_in * u_in)
+                            elif sx >= nx:
+                                # pressure outlet: equilibrium at rho = 1 with the local velocity
+                                r1 = 0.0
+                                ox = 0.0
+                                oy = 0.0
+                                oz = 0.0
+                                for j in range(19):
+                                    fj = f_in[j, nx - 1, sy, sz]
+                                    r1 += fj
+                                    ox += fj * CX[j]
+                                    oy += fj * CY[j]
+                                    oz += fj * CZ[j]
+                                ox /= r1
+                                oy /= r1
+                                oz /= r1
+                                cu = 3.0 * (CX[k] * ox + CY[k] * oy + CZ[k] * oz)
+                                val = Wt[k] * (1.0 + cu + 0.5 * cu * cu - 1.5 * (ox * ox + oy * oy + oz * oz))
+                            elif flag[sx, sy, sz] == 1:
+                                val = f_in[OPP_[i], x, y, z] + 6.0 * Wt[i] * (CX[i] * uwx + CY[i] * uwy + CZ[i] * uwz)
+                            else:
+                                val = f_in[k, sx, sy, sz]
+                        f[i] = val
+                        rho += val
+                        jx += val * CX[i]
+                        jy += val * CY[i]
+                        jz += val * CZ[i]
+                    if rho < 0.2 or rho > 5.0:
+                        rho = 1.0
+                    ux = jx / rho
+                    uy = jy / rho
+                    uz = jz / rho
+                    usq = ux * ux + uy * uy + uz * uz
+                    if usq > 0.16:
+                        s = 0.4 / np.sqrt(usq)
+                        ux *= s
+                        uy *= s
+                        uz *= s
+                        usq = 0.16
+                    pxx = 0.0
+                    pyy = 0.0
+                    pzz = 0.0
+                    pxy = 0.0
+                    pxz = 0.0
+                    pyz = 0.0
+                    for i in range(19):
+                        cxi = CX[i]
+                        cyi = CY[i]
+                        czi = CZ[i]
+                        cu = 3.0 * (cxi * ux + cyi * uy + czi * uz)
+                        fn = f[i] - Wt[i] * rho * (1.0 + cu + 0.5 * cu * cu - 1.5 * usq)
+                        pxx += fn * cxi * cxi
+                        pyy += fn * cyi * cyi
+                        pzz += fn * czi * czi
+                        pxy += fn * cxi * cyi
+                        pxz += fn * cxi * czi
+                        pyz += fn * cyi * czi
+                    q = np.sqrt(pxx * pxx + pyy * pyy + pzz * pzz + 2.0 * (pxy * pxy + pxz * pxz + pyz * pyz))
+                    tau = 0.5 * (tau0 + np.sqrt(tau0 * tau0 + 18.0 * 1.41421356 * cs2 * q / rho))
+                    if x > sponge:
+                        tau += 1.5 * (x - sponge) / (nx - sponge)
+                    om = 1.0 - 1.0 / tau
+                    for i in range(19):
+                        cxi = CX[i]
+                        cyi = CY[i]
+                        czi = CZ[i]
+                        cu = 3.0 * (cxi * ux + cyi * uy + czi * uz)
+                        feq = Wt[i] * rho * (1.0 + cu + 0.5 * cu * cu - 1.5 * usq)
+                        qp = (cxi * cxi - 1.0 / 3.0) * pxx + (cyi * cyi - 1.0 / 3.0) * pyy + (czi * czi - 1.0 / 3.0) * pzz \
+                            + 2.0 * (cxi * cyi * pxy + cxi * czi * pxz + cyi * czi * pyz)
+                        f_out[i, x, y, z] = feq + om * 4.5 * Wt[i] * qp
+                    if acc != 0:
+                        rho_m[x, y, z] += rho
+                        u_m[x, y, z, 0] += ux
+                        u_m[x, y, z, 1] += uy
+                        u_m[x, y, z, 2] += uz
+                        u2_m[x, y, z, 0] += ux * ux
+                        u2_m[x, y, z, 1] += uy * uy
+                        u2_m[x, y, z, 2] += uz * uz
+
+    @nb.njit(fastmath=True)
+    def force(f, lx, ly, lz, li, CX, CY, CZ, Wt, OPP_, uw, slip):
+        fx = 0.0
+        fy = 0.0
+        fz = 0.0
+        for t in range(lx.shape[0]):
+            x = lx[t]
+            y = ly[t]
+            z = lz[t]
+            i = li[t]
+            fo = f[OPP_[i], x, y, z]
+            rp = 0.0
+            px = 0.0
+            py = 0.0
+            pz = 0.0
+            for j in range(19):
+                fj = f[j, x, y, z]
+                rp += fj
+                px += fj * CX[j]
+                py += fj * CY[j]
+                pz += fj * CZ[j]
+            r = max(rp, 0.2)
+            upx = px / r
+            upy = py / r
+            upz = pz / r
+            nnx = uw[x, y, z, 0]
+            nny = uw[x, y, z, 1]
+            nnz = uw[x, y, z, 2]
+            d = upx * nnx + upy * nny + upz * nnz
+            vx = (upx - d * nnx) * slip
+            vy = (upy - d * nny) * slip
+            vz = (upz - d * nnz) * slip
+            fi = fo + 6.0 * Wt[i] * (CX[i] * vx + CY[i] * vy + CZ[i] * vz)
+            s = fo + fi
+            fx -= CX[i] * s
+            fy -= CY[i] * s
+            fz -= CZ[i] * s
+        return fx, fy, fz
+
+    _NB = (step, force)
+    return _NB
+
+
+class TunnelCPU:
+    """The Tunnel above on the CPU: same boundary conditions, collision, wall model and forces."""
+
+    def __init__(self, solid, uw, u_lat, tau0, cs=0.16, device=None, sponge_frac=0.12, moving_ground=True, u0=None, wall_slip=0.85):
+        from scipy import ndimage
+        self.step_k, self.force_k = _numba_kernels()
+        nx, ny, nz = solid.shape
+        self.shape = (nx, ny, nz)
+        near = ndimage.binary_dilation(solid, structure=np.ones((3, 3, 3), bool)) & ~solid
+        self.flag = np.where(solid, 1, np.where(near, 2, 0)).astype(np.int8)
+        sm = ndimage.gaussian_filter(solid.astype(np.float32), 1.2)
+        g = np.stack(np.gradient(sm), -1)
+        g = -g / (np.linalg.norm(g, axis=-1, keepdims=True) + 1e-9)
+        self.uw = np.where(near[..., None], g, 0.0).astype(np.float32)
+        del sm, g
+        self.wall_damp = float(wall_slip)
+        self.CX = np.ascontiguousarray(C[:, 0]).astype(np.int64)
+        self.CY = np.ascontiguousarray(C[:, 1]).astype(np.int64)
+        self.CZ = np.ascontiguousarray(C[:, 2]).astype(np.int64)
+        self.Wt = W.astype(np.float64)
+        self.OPP = OPP.astype(np.int64)
+        self.MZ = MZ.astype(np.int64)
+        self.u_lat, self.tau0, self.cs2 = float(u_lat), float(tau0), float(cs * cs)
+        self.sponge = int(nx * (1 - sponge_frac))
+        u0 = self.u_lat if u0 is None else float(u0)
+        cu = 3.0 * C[:, 0].astype(np.float32) * u0
+        feq = (W * (1.0 + cu + 0.5 * cu * cu - 1.5 * u0 * u0)).astype(np.float32)
+        self.f0 = np.empty((19, nx, ny, nz), np.float32)
+        self.f0[:] = feq[:, None, None, None]
+        self.f0[:, solid] = 0.0
+        self.f1 = np.zeros_like(self.f0)
+        self.rho_m = np.zeros((nx, ny, nz), np.float32)
+        self.u_m = np.zeros((nx, ny, nz, 3), np.float32)
+        self.u2_m = np.zeros((nx, ny, nz, 3), np.float32)
+        self.n_acc = 0
+        fluid = ~solid
+        lx, ly, lz, li = [], [], [], []
+        for i in range(1, 19):
+            c = C[i]
+            src = np.zeros_like(solid)
+            sl_dst = tuple(slice(max(ci, 0), n + min(ci, 0)) for ci, n in zip(c, solid.shape))
+            sl_src = tuple(slice(max(-ci, 0), n + min(-ci, 0)) for ci, n in zip(c, solid.shape))
+            src[sl_dst] = solid[sl_src]
+            hit = np.argwhere(src & fluid)
+            lx.append(hit[:, 0]); ly.append(hit[:, 1]); lz.append(hit[:, 2]); li.append(np.full(len(hit), i))
+        self.f_ref = np.zeros(3)
+        for a, i in zip(lx, range(1, 19)):
+            self.f_ref += -2.0 * W[i] * C[i] * len(a)
+        cat = lambda a: np.concatenate(a).astype(np.int64)
+        self.lx, self.ly, self.lz, self.li = cat(lx), cat(ly), cat(lz), cat(li)
+        self.nlinks = len(self.lx)
+
+    def step(self, n=1, u_in=None, accumulate=False):
+        u = self.u_lat if u_in is None else float(u_in)
+        for _ in range(n):
+            self.step_k(self.f0, self.f1, self.flag, self.uw, self.CX, self.CY, self.CZ, self.Wt, self.OPP, self.MZ,
+                        u, self.tau0, self.cs2, self.wall_damp, self.sponge, 1 if accumulate else 0,
+                        self.rho_m, self.u_m, self.u2_m)
+            self.f0, self.f1 = self.f1, self.f0
+            if accumulate:
+                self.n_acc += 1
+
+    def force(self):
+        if self.nlinks == 0:
+            return np.zeros(3)
+        F = self.force_k(self.f0, self.lx, self.ly, self.lz, self.li, self.CX, self.CY, self.CZ, self.Wt, self.OPP,
+                         self.uw, self.wall_damp)
+        return np.array(F) - self.f_ref
+
+    def center_slice(self, y):
+        f = self.f0[:, :, int(y), :].astype(np.float64)
+        rho = f.sum(0)
+        jx = np.tensordot(C[:, 0].astype(np.float64), f, 1)
+        jz = np.tensordot(C[:, 2].astype(np.float64), f, 1)
+        out = (np.sqrt(jx * jx + jz * jz) / np.maximum(rho, 1e-6)).astype(np.float32)
+        out[self.flag[:, int(y), :] == 1] = -1.0
+        return out
+
+    def means(self):
+        n = max(self.n_acc, 1)
+        return self.rho_m / n, self.u_m / n, self.u2_m / n
+
+
 import os, json, gzip, base64, math, time, shutil
 
 
@@ -702,7 +985,10 @@ def run(ctx):
                 real_len[key.strip().lower()] = float(val.strip().lower().replace("m", ""))
             except ValueError:
                 ctx.log(f"Real lengths: cannot read '{line.strip()}' (write: part of the file name = metres)")
-    device = "cuda" if wp.is_cuda_available() else "cpu"
+    accel = str(P.get("accelerator", "auto"))
+    device = "cuda" if wp.is_cuda_available() and not accel.lower().startswith("cpu") else "cpu"
+    if accel.lower().startswith("nvidia") and device != "cuda":
+        ctx.log("No NVIDIA GPU with CUDA on this machine: running on the CPU instead")
     mem_budget = 0
     if device == "cuda":
         try:
@@ -712,6 +998,12 @@ def run(ctx):
             mem_budget = 0
     if device == "cuda":
         ctx.log(f"GPU: {wp.get_device('cuda').name}")
+    else:
+        import numba
+        ctx.log(f"CPU: {numba.get_num_threads()} threads (Numba). Expect roughly 20 to 60 million cell updates a second, "
+                f"10 to 40 times slower than a GPU: 64 (quick) is the resolution to use on a CPU")
+        ctx.progress(0, "compiling the CPU solver")
+        _numba_kernels()
     ctx.log(f"Wind tunnel on {device}: {N} cells per car length, {speed_kmh:.0f} km/h, {flow_time:g} flow-through times")
 
     models = []
@@ -799,8 +1091,8 @@ def run(ctx):
         tau0 = 0.5 + 3.0 * u_lat * Nm / re
         ctx.log(f"[{m['label']}] {L:.2f} x {W:.2f} x {H:.2f} m, grid {nx}x{ny}x{nz} = {nx*ny*nz/1e6:.1f} M cells, "
                 f"dx {dx*100:.1f} cm, frontal area {area:.2f} m², Re {re_phys:.2e} (LES at {re:.1e})")
-        tun = Tunnel(solid, uw, u_lat, tau0, cs=float(P.get("smagorinsky", 0.17)), device=device, u0=0.0,
-                     wall_slip=float(P.get("wall_slip", 0.85)))
+        tun = (Tunnel if device == "cuda" else TunnelCPU)(solid, uw, u_lat, tau0, cs=float(P.get("smagorinsky", 0.17)),
+                                                          device=device, u0=0.0, wall_slip=float(P.get("wall_slip", 0.85)))
         steps_per_T = Nm / u_lat
         steps = int(flow_time * steps_per_T)
         ramp = int(1.5 * steps_per_T)
@@ -809,6 +1101,7 @@ def run(ctx):
         hist = []
         t0 = time.time()
         last_tel = 0
+        told_eta = False
         yc = ny // 2
         q_lat = 0.5 * u_lat * u_lat
         s = 0
@@ -823,6 +1116,11 @@ def run(ctx):
                     raise RuntimeError("The flow blew up: try a lower Reynolds number cap or another resolution")
                 hist.append((s / steps_per_T, cd, cl, cs_))
             now = time.time()
+            if device == "cpu" and not told_eta and now - t0 > 20:
+                told_eta = True
+                rate = s * nx * ny * nz / (now - t0)
+                ctx.log(f"[{m['label']}] {rate / 1e6:.0f} million cell updates a second on the CPU: about "
+                        f"{(steps - s) * nx * ny * nz / rate / 60:.0f} more minutes for this car")
             if now - last_tel > 1.5 or s >= steps:
                 last_tel = now
                 sl = tun.center_slice(yc)

@@ -1,17 +1,17 @@
 # Wind tunnel (GPU CFD)
 
-A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.
+A virtual wind tunnel for car models: lattice-Boltzmann LES on an NVIDIA GPU (Warp) or on all the cores of a CPU (Numba) gives drag, lift, surface pressure, streamlines and the flow field for real-tim
 
-Wire car models (GLB/glTF, STL, OBJ, PLY, OFF; one car per file) into Car models, for example from a Dataset block. Each car is turned so its length runs along the wind and its wheels stand on the road: by default the longest side is the length, glTF files are Y-up (others Z-up), the taller end is the rear, and mm or cm are scaled to metres (set Length axis, Up axis, Nose at or Units to override). Models drawn at the wrong size (common on Sketchfab) are rescaled with Real lengths: one line per car, a part of its file name = its real length in metres (countach = 4.87); a model under 1 m long with no real length given is scaled to 4.5 m. Cd and Cl do not depend on the size; forces in newtons and power do. It is voxelized and simulated in turn: D3Q19 lattice Boltzmann with a regularized collision and a Smagorinsky LES model, a partial-slip wall model on the body, slip floor (like a rolling road), velocity inlet, pressure outlet with a sponge. The grid must fit in the GPU's memory (about 200 bytes a cell): a car too big for the chosen Resolution is run at the finest resolution that fits, and the log says so. Forces come from momentum exchange, averaged over the last part of the run. Outputs for the Wind tunnel view: <model>.tunnel.json.gz (surface pressure, streamlines, slices, history, transform), <model>.field.bin.gz (mean velocity, pressure and turbulence around the car, for the real-time smoke) and the original <model>.source.glb with its materials. Also results.csv, convergence.csv, surfaces coloured by Cp (PLY) and a report. Sample cars (fastback, notchback, estate, suv, pickup, van, sports, ahmed25, all) only when asked in Sample cars.
+Wire car models (GLB/glTF, STL, OBJ, PLY, OFF; one car per file) into Car models, for example from a Dataset block. Each car is turned so its length runs along the wind and its wheels stand on the road: by default the longest side is the length, glTF files are Y-up (others Z-up), the taller end is the rear, and mm or cm are scaled to metres (set Length axis, Up axis, Nose at or Units to override). Models drawn at the wrong size (common on Sketchfab) are rescaled with Real lengths: one line per car, a part of its file name = its real length in metres (countach = 4.87); a model under 1 m long with no real length given is scaled to 4.5 m. Cd and Cl do not depend on the size; forces in newtons and power do. It is voxelized and simulated in turn: D3Q19 lattice Boltzmann with a regularized collision and a Smagorinsky LES model, a partial-slip wall model on the body, slip floor (like a rolling road), velocity inlet, pressure outlet with a sponge. Processor: auto runs on an NVIDIA GPU (NVIDIA Warp) when the machine has one and otherwise on all the cores of the CPU (Numba); NVIDIA GPU or CPU forces the choice. On a GPU the grid must fit in its memory (about 200 bytes a cell): a car too big for the chosen Resolution is run at the finest resolution that fits, and the log says so. A CPU is 10 to 40 times slower than a GPU: use 64 (quick) there (a few minutes to half an hour per car, depending on the CPU; the log gives the time left). Forces come from momentum exchange, averaged over the last part of the run. Outputs for the Wind tunnel view: <model>.tunnel.json.gz (surface pressure, streamlines, slices, history, transform), <model>.field.bin.gz (mean velocity, pressure and turbulence around the car, for the real-time smoke) and the original <model>.source.glb with its materials. Also results.csv, convergence.csv, surfaces coloured by Cp (PLY) and a report. Sample cars (fastback, notchback, estate, suv, pickup, van, sports, ahmed25, all) only when asked in Sample cars.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a worker, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-wind-tunnel-gpu-cfd` · version 6 |
+| Block | `ws-wind-tunnel-gpu-cfd` · version 7 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
-| Runs on | NVIDIA GPU |
+| Runs on | Any worker, NVIDIA GPU |
 
 ## Inputs
 
@@ -34,8 +34,9 @@ An [EsaSim](https://esacode.com/) blueprint block: it runs on a worker, in Pytho
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `accelerator` Processor | select | `"auto"` | auto: an NVIDIA GPU when the machine has one, otherwise all the cores of the CPU; a CPU is 10 to 40 times slower, so use 64 (quick) there |
 | `samples` Sample cars | text | `"none"` | none: only the cars wired in; or a list of built-in cars: fastback, notchback, estate, suv, pickup, van, sports, ahmed25; all; auto: the samples when no files are wired |
-| `resolution` Resolution (cells per car length) | select | `"128 (fine)"` | Lowered for a car whose grid would not fit in the GPU's memory (the log says so) |
+| `resolution` Resolution (cells per car length) | select | `"128 (fine)"` | Lowered for a car whose grid would not fit in the GPU's memory (the log says so); on a CPU, 64 (quick) |
 | `speed_kmh` Wind speed (km/h) | number | `120` |  |
 | `flow_time` Flow-through times | number | `8` | How long each car is simulated, in car lengths of air passing by; the last ~55% is averaged |
 | `real_lengths` Real lengths | textarea | `""` | Models drawn at the wrong size: one line per car, a part of its file name = its real length in metres, e.g. countach = 4.87 |

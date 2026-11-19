@@ -133,7 +133,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Workspace blocks it uses
 
-- [Wind tunnel (GPU CFD)](blocks/ws-wind-tunnel-gpu-cfd) · version 6
+- [Wind tunnel (GPU CFD)](blocks/ws-wind-tunnel-gpu-cfd) · version 7
 - [Wind tunnel view](blocks/ws-wind-tunnel-view) · version 7
 
 ### Assets

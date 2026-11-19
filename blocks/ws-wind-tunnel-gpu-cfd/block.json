@@ -6,8 +6,8 @@
     "icon": "wind",
     "side": "backend",
     "customizable": true,
-    "summary": "A virtual wind tunnel for car models: lattice-Boltzmann LES on the GPU (NVIDIA Warp) gives drag, lift, surface pressure, streamlines and the flow field for real-time smoke, for each GLB/STL/OBJ car.",
-    "help": "Wire car models (GLB/glTF, STL, OBJ, PLY, OFF; one car per file) into Car models, for example from a Dataset block. Each car is turned so its length runs along the wind and its wheels stand on the road: by default the longest side is the length, glTF files are Y-up (others Z-up), the taller end is the rear, and mm or cm are scaled to metres (set Length axis, Up axis, Nose at or Units to override). Models drawn at the wrong size (common on Sketchfab) are rescaled with Real lengths: one line per car, a part of its file name = its real length in metres (countach = 4.87); a model under 1 m long with no real length given is scaled to 4.5 m. Cd and Cl do not depend on the size; forces in newtons and power do. It is voxelized and simulated in turn: D3Q19 lattice Boltzmann with a regularized collision and a Smagorinsky LES model, a partial-slip wall model on the body, slip floor (like a rolling road), velocity inlet, pressure outlet with a sponge. The grid must fit in the GPU's memory (about 200 bytes a cell): a car too big for the chosen Resolution is run at the finest resolution that fits, and the log says so. Forces come from momentum exchange, averaged over the last part of the run. Outputs for the Wind tunnel view: <model>.tunnel.json.gz (surface pressure, streamlines, slices, history, transform), <model>.field.bin.gz (mean velocity, pressure and turbulence around the car, for the real-time smoke) and the original <model>.source.glb with its materials. Also results.csv, convergence.csv, surfaces coloured by Cp (PLY) and a report. Sample cars (fastback, notchback, estate, suv, pickup, van, sports, ahmed25, all) only when asked in Sample cars.",
+    "summary": "A virtual wind tunnel for car models: lattice-Boltzmann LES on an NVIDIA GPU (Warp) or on all the cores of a CPU (Numba) gives drag, lift, surface pressure, streamlines and the flow field for real-tim",
+    "help": "Wire car models (GLB/glTF, STL, OBJ, PLY, OFF; one car per file) into Car models, for example from a Dataset block. Each car is turned so its length runs along the wind and its wheels stand on the road: by default the longest side is the length, glTF files are Y-up (others Z-up), the taller end is the rear, and mm or cm are scaled to metres (set Length axis, Up axis, Nose at or Units to override). Models drawn at the wrong size (common on Sketchfab) are rescaled with Real lengths: one line per car, a part of its file name = its real length in metres (countach = 4.87); a model under 1 m long with no real length given is scaled to 4.5 m. Cd and Cl do not depend on the size; forces in newtons and power do. It is voxelized and simulated in turn: D3Q19 lattice Boltzmann with a regularized collision and a Smagorinsky LES model, a partial-slip wall model on the body, slip floor (like a rolling road), velocity inlet, pressure outlet with a sponge. Processor: auto runs on an NVIDIA GPU (NVIDIA Warp) when the machine has one and otherwise on all the cores of the CPU (Numba); NVIDIA GPU or CPU forces the choice. On a GPU the grid must fit in its memory (about 200 bytes a cell): a car too big for the chosen Resolution is run at the finest resolution that fits, and the log says so. A CPU is 10 to 40 times slower than a GPU: use 64 (quick) there (a few minutes to half an hour per car, depending on the CPU; the log gives the time left). Forces come from momentum exchange, averaged over the last part of the run. Outputs for the Wind tunnel view: <model>.tunnel.json.gz (surface pressure, streamlines, slices, history, transform), <model>.field.bin.gz (mean velocity, pressure and turbulence around the car, for the real-time smoke) and the original <model>.source.glb with its materials. Also results.csv, convergence.csv, surfaces coloured by Cp (PLY) and a report. Sample cars (fastback, notchback, estate, suv, pickup, van, sports, ahmed25, all) only when asked in Sample cars.",
     "inputs": [
         {
             "id": "models",
@@ -85,6 +85,18 @@
     ],
     "params": [
         {
+            "key": "accelerator",
+            "label": "Processor",
+            "type": "select",
+            "default": "auto",
+            "options": [
+                "auto",
+                "NVIDIA GPU",
+                "CPU"
+            ],
+            "help": "auto: an NVIDIA GPU when the machine has one, otherwise all the cores of the CPU; a CPU is 10 to 40 times slower, so use 64 (quick) there"
+        },
+        {
             "key": "samples",
             "label": "Sample cars",
             "type": "text",
@@ -102,7 +114,7 @@
                 "128 (fine)",
                 "160 (very fine)"
             ],
-            "help": "Lowered for a car whose grid would not fit in the GPU's memory (the log says so)"
+            "help": "Lowered for a car whose grid would not fit in the GPU's memory (the log says so); on a CPU, 64 (quick)"
         },
         {
             "key": "speed_kmh",
@@ -212,10 +224,27 @@
         }
     ],
     "hardware": [
+        "cpu",
         "nvidia"
     ],
+    "hardware_by": {
+        "param": "accelerator",
+        "map": {
+            "CPU": [
+                "cpu"
+            ],
+            "NVIDIA GPU": [
+                "nvidia"
+            ],
+            "auto": [
+                "cpu",
+                "nvidia"
+            ]
+        }
+    },
     "packages": [
         "warp-lang",
+        "numba",
         "numpy",
         "scipy",
         "scikit-image",
@@ -223,6 +252,6 @@
         "fast-simplification"
     ],
     "esasim": {
-        "version": 6
+        "version": 7
     }
 }
