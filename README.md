@@ -8,9 +8,9 @@
 
 # Virtual wind tunnel
 
-**Upload your car models and study their aerodynamics in a wind tunnel computed on your own GPU: drag, lift, surface pressure, and smoke you move through the flow in real time.**
+**Upload your car models and study their aerodynamics in a wind tunnel computed on your own machine: drag, lift, surface pressure, and smoke you move through the flow in real time.**
 
-Every car in the **Car models** dataset is placed on the floor of a virtual tunnel and simulated in turn with lattice-Boltzmann CFD written in NVIDIA Warp. Then the View puts it in a wind gallery: the car with its own materials on an asphalt belt, a smoke wand you drag in front of it, flow slices you slide through the air, and a table that ranks every car by drag.
+Every car in the project's **car-models** assets is placed on the floor of a virtual tunnel and simulated in turn with lattice-Boltzmann CFD, on an NVIDIA GPU (NVIDIA Warp) or on all the cores of a CPU. Then the View puts it in a wind gallery: the car with its own materials on an asphalt belt, a smoke wand you drag in front of it, flow slices you slide through the air, and a table that ranks every car by drag.
 
 ![type](https://img.shields.io/badge/type-Automotive-blue) ![language](https://img.shields.io/badge/language-Python-3776AB) ![runs on](https://img.shields.io/badge/runs%20on-NVIDIA%20%7C%20CPU-6f42c1) ![method](https://img.shields.io/badge/method-Lattice%20Boltzmann%20LES-orange) ![input](https://img.shields.io/badge/input-GLB%20%7C%20glTF%20%7C%20STL%20%7C%20OBJ-178c8c) [![made with](https://img.shields.io/badge/made%20with-EsaSim-0b7285)](https://esacode.com/)
 
@@ -32,8 +32,8 @@ Nobody has to prepare the models. Each file is turned to face the wind, scaled t
 
 | Block | What it does |
 |---|---|
-| **Car models** | The dataset of cars to test: GLB/glTF, STL, OBJ, PLY or OFF, one car per file. |
-| **Wind tunnel (GPU CFD)** | Orients and scales each car, builds the grid, runs the flow on the GPU and writes the forces, the mean flow field, the pressure on the surface and the report. |
+| **Car models** | The cars to test, from the project's assets (`assets/virtual-wind-tunnel/car-models`): GLB/glTF, STL, OBJ, PLY or OFF, one car per file. |
+| **Wind tunnel (GPU CFD)** | Orients and scales each car, builds the grid, runs the flow on the GPU or the CPU and writes the forces, the mean flow field, the pressure on the surface and the report. |
 | **Live flow** | Sends the tunnel's progress to the View while it runs: the car being simulated, its drag so far, the speed of the solver and a live slice of the flow. |
 | **Wind tunnel** | The 3D wind gallery (below). |
 | **Results**, **Drag by model**, **Report** | The table of forces, a bar chart of Cd and CdA by car, and the run's Markdown report. |
@@ -53,7 +53,7 @@ Nobody has to prepare the models. Each file is turned to face the wind, scaled t
 
 | Part | How |
 |---|---|
-| **Solver** | lattice Boltzmann D3Q19, regularized collision, Smagorinsky LES (Cs 0.17), written in NVIDIA Warp |
+| **Solver** | lattice Boltzmann D3Q19, regularized collision, Smagorinsky LES (Cs 0.17); NVIDIA Warp on the GPU, the same kernel in Numba on the CPU |
 | **Tunnel** | velocity inlet, pressure outlet with a sponge zone, slip floor (as on a rolling road), periodic sides; the wind ramps up from rest |
 | **Car surface** | halfway bounce-back with a partial-slip wall model, since the boundary layer is thinner than a cell; wheels stand still |
 | **Grid** | *Resolution* cells per car length: 64 quick, 96 standard, 128 fine, 160 very fine |
@@ -64,20 +64,21 @@ At 128 cells per length a car takes 14 to 27 million cells and 3 to 5 minutes on
 
 ## Where it runs
 
-- **NVIDIA GPU**: the way to run it.
-- **CPU**: Warp falls back to the CPU; use **64 (quick)** there, it is much slower.
+- **NVIDIA GPU**: the fastest. A car too big for the GPU's memory at the chosen resolution is run at the finest resolution that fits, and the log says so.
+- **CPU**: any machine, with no GPU needed. The same solver runs on all the cores (Numba) and gives the same results, but 10 to 40 times slower: use **64 (quick)**, which takes a few minutes to half an hour per car depending on the CPU. The log gives the speed and the time left for each car.
+- **Processor** on the Wind tunnel block chooses: **auto** (an NVIDIA GPU when the machine has one, otherwise the CPU), **NVIDIA GPU** or **CPU**.
 - The View runs in the browser; smoke and slices are computed there from the run's files, so moving them needs no new run.
 
 ## What you need
 
-- A machine with the EsaSim worker (Project › Compute), with an NVIDIA GPU.
-- Python packages, installed by the worker the first time: `warp-lang`, `numpy`, `scipy`, `scikit-image`, `trimesh` and `fast-simplification`. No account or key is needed.
-- Your car models in the **Car models** dataset.
+- A machine with the EsaSim worker (Project › Compute); an NVIDIA GPU makes it much faster but is not required.
+- Python packages, installed by the worker the first time: `warp-lang`, `numba`, `numpy`, `scipy`, `scikit-image`, `trimesh` and `fast-simplification`. No account or key is needed.
+- Your car models in the project's assets, under `assets/virtual-wind-tunnel/car-models`.
 
 ## How to run it
 
-1. **Upload your cars**: under **Data**, open **Car models** and add the files, one car per file.
-2. Under **Compute**, check that a machine with an NVIDIA GPU is available for this project.
+1. **Upload your cars** to the project's assets, in `assets/virtual-wind-tunnel/car-models`, one car per file.
+2. Under **Compute**, check that a machine is available for this project. Without an NVIDIA GPU, set **Resolution** to **64 (quick)** on the Wind tunnel block (or in the View before pressing **Run tunnel**).
 3. Run [**1 · Wind tunnel**](https://esacode.com/app/projects/22/flows/79), or press **Run tunnel** in the View. The cars are simulated one after the other.
 4. Switch to **View**, maximize the **Wind tunnel** panel, pick a model and move the smoke wand.
 
@@ -85,9 +86,10 @@ At 128 cells per length a car takes 14 to 27 million cells and 3 to 5 minutes on
 
 On the **Wind tunnel (GPU CFD)** block:
 
+- **Processor** (auto): NVIDIA GPU, CPU, or auto, which takes the GPU when there is one.
 - **Resolution** (128 fine) and **Speed** (120 km/h). The speed sets the Reynolds number; the View's Wind slider only rescales the forces.
 - **Flow time** (8): how many times the air crosses the car length; the second half is averaged.
-- **Real lengths**: one line per car, part of its file name = its real length in metres (for example `x7 = 5.15`). Models on Sketchfab are often drawn at the wrong size.
+- **Real lengths**: one line per car, part of its file name = its real length in metres (for example `x7 = 5.15`). Models on Sketchfab are often drawn at the wrong size; a model under 1 m long with no real length is scaled to 4.5 m.
 - **Length axis**, **Up axis**, **Nose at**, **Units** (auto): the orientation is found by itself (the longest side is the length, glTF is Y-up, the taller end is the rear, sizes in mm or cm become metres); set them if a car comes out the wrong way round.
 - **Reynolds cap**, **Smagorinsky**, **Wall slip**, **Max triangles**: solver details; the defaults suit cars.
 
@@ -111,7 +113,7 @@ The car models come from [Sketchfab](https://sketchfab.com) and belong to their 
 - **1985 DeLorean DMC-12 Time Machine**: [VTX](https://sketchfab.com/VTX_car)
 - **2026 Ferrari SF-26**: [Dave Love SketchFab](https://sketchfab.com/Tyler_Dave)
 
-Respect each model's licence on Sketchfab when sharing results. NVIDIA Warp is Apache 2.0. The code of the blocks is EsaSim's.
+Respect each model's licence on Sketchfab when sharing results. NVIDIA Warp is Apache 2.0; Numba is BSD. The code of the blocks is EsaSim's.
 
 ## Notes
 
@@ -119,7 +121,7 @@ Respect each model's licence on Sketchfab when sharing results. NVIDIA Warp is A
 - Race-car wings and floors are thinner than the cells, so their downforce is underestimated.
 - The wheels do not turn, in the simulation or in the View: without rigged wheels a model's hubs and brakes cannot be told apart from its rims.
 - The smoke shows the time-averaged flow with the measured turbulence added as random motion; it is not a replay of the unsteady wake.
-- The first run on a machine installs the packages and compiles the Warp kernels, a few minutes more.
+- The first run on a machine installs the packages and compiles the solver (Warp kernels on a GPU, a few seconds of Numba on a CPU).
 
 <!-- esasim: files of the project -->
 
@@ -129,7 +131,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Wind tunnel](blueprints/1-wind-tunnel.json) · 7 blocks · version 9
+- [1 · Wind tunnel](blueprints/1-wind-tunnel.json) · 7 blocks · version 10
 
 ### Workspace blocks it uses
 
