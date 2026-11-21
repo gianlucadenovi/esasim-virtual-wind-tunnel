@@ -1,8 +1,8 @@
 // ── EsaSim block ──────────────────────────────────────────────────────
-// Wind tunnel view (ws-wind-tunnel-view) · version 7 · view, JavaScript: function render(ctx)
+// Wind tunnel view (ws-wind-tunnel-view) · version 8 · view, JavaScript: function render(ctx)
 // The wind tunnel in 3D: each car with its own materials, its surface pressure or paint, on an asphalt belt in a gallery with a glossy mirroring floor; realistic smoke from a wand and flow slices you mo
 // Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
-// Saved: 2026-11-18
+// Saved: 2026-11-21
 //
 // Inputs   ctx.input("id") gives { files, stream }; ctx.rows("id"), ctx.json("id"), ctx.text("id")
 //   tunnel      Files (gz, glb, gltf, json) Tunnel results · several · <model>.tunnel.json.gz, <model>.field.bin.gz and <model>.source.glb from the Wind tunnel block
@@ -382,6 +382,18 @@ function render(ctx) {
       holder.add(g.scene);
       holder.updateMatrixWorld(true);
       holder.traverse(function (q) { if (q.isMesh) { q.castShadow = true; q.receiveShadow = true; } });
+      // Models often mark whole textured parts as see-through (glTF BLEND) for a few holes in their texture (grilles,
+      // louvres, the engine bay, the interior). Drawn that way they write no depth, so the parts behind show through them
+      // in the wrong order. A textured one becomes a cut-out (its holes stay, the rest is solid and hides what is behind);
+      // plain glass (no texture) stays see-through, drawn after the solid parts.
+      holder.traverse(function (q) {
+        if (!q.isMesh) return;
+        (Array.isArray(q.material) ? q.material : [q.material]).forEach(function (mt) {
+          if (!mt || !mt.transparent) return;
+          if (mt.map) { mt.alphaTest = 0.5; mt.transparent = mt.opacity < 0.99; mt.depthWrite = true; mt.needsUpdate = true; }
+          else { mt.depthWrite = false; q.renderOrder = 1; }
+        });
+      });
       var ex = (g.parser && g.parser.json && g.parser.json.asset && g.parser.json.asset.extras) || {};
       doc._credit = ex;
       doc._glb = holder; busy(''); return holder;
